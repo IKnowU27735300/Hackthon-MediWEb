@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- HELPER FUNCTIONS ---
+    
+    function isAuthenticated() { 
+      return request.auth != null; 
+    }
+
+    // Fetch the user's profile to determine their role
+    function getUserData() {
+      // Safely access data only if path exists
+      return get(/databases/$(database)/documents/businesses/$(request.auth.uid)).data;
+    }
+
+    // 1. DOCTOR (Business Owner/Admin)
+    function isDoctor(businessId) {
+      return isAuthenticated() && (request.auth.uid == businessId || (exists(/databases/$(database)/documents/businesses/$(request.auth.uid)) && getUserData().role == 'doctor'));
+    }
+
+    // 2. ASSISTANT (Clinical Staff)
+    function isAssistant(businessId) {
+      return isAuthenticated() && exists(/databases/$(database)/documents/businesses/$(request.auth.uid)) && getUserData().role == 'assistant'; 
+    }
+
+    // 3. SUPPLIER (Inventory Manager)
+    function isSupplier(businessId) {
+      return isAuthenticated() && exists(/databases/$(database)/documents/businesses/$(request.auth.uid)) && getUserData().role == 'supplier';
+    }
+
+    // General Staff Check
+    function isStaff(businessId) {
+      return isDoctor(businessId) || isAssistant(businessId) || isSupplier(businessId);
+    }
+
+    // --- COLLECTION RULES ---
+
+    // Top Level: User Profiles (Doctors, Assistants, Suppliers)
+    // Allow PUBLIC read so patients can find their clinic on the landing page
+    match /businesses/{userId} {
+      allow read: if true; 
+      // Users can create/update their own profile, Doctors can update Assistant profiles (for linking)
+      allow write: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        (exists(/databases/$(database)/documents/businesses/$(request.auth.uid)) && getUserData().role == 'doctor' && request.resource.data.role == 'assistant')
+      );
+
+      // --- SUB-COLLECTIONS ---
+
+      // 1. BOOKINGS
+      match /bookings/{bookingId} {
+        // Allow public read so patients can verify their own bookings or check availability
+        allow read: if true; 
+        allow create: if true; 
+        allow update: if isDoctor(userId) || isAssistant(userId);
+      }
+
+      // 2. CONTACTS (Patients)
+      match /contacts/{contactId} {
+        // Allow public read to support duplicate check in createBooking (query by email)
+        allow read: if true; 
+        allow create: if true; 
+        allow update: if isDoctor(userId) || isAssistant(userId);
+      }
+      
+      // 3. INVENTORY (Shared Resource)
+      match /inventory/{itemId} {
+        allow read: if isStaff(userId);
+        allow write: if isStaff(userId);
+      }
+
+      // 4. STOCK HISTORY (Usage Logs)
+      match /stock_history/{logId} {
+        allow read: if isStaff(userId);
+        allow create: if isStaff(userId);
+        allow update: if isStaff(userId);
+        allow delete: if isDoctor(userId);
+      }
+
+      // 5. INTERNAL CHATS (Team)
+      match /internal_chats/{chatId} {
+         allow read, write: if isStaff(userId);
+         match /messages/{msgId} {
+            allow read, write: if isStaff(userId);
+         }
+      }
+
+      // 6. CUSTOMER CHATS (Patient Portal)
+      match /customer_chats/{chatId} {
+        allow read: if true; 
+        allow create, update: if true; 
+
+        match /messages/{msgId} {
+           allow read: if true;
+           allow create: if true;
+        }
+      }
+    }
+  }
+}
+

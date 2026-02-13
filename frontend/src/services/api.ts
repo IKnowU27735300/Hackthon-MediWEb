@@ -1,0 +1,798 @@
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  addDoc, 
+  serverTimestamp,
+  Timestamp,
+  onSnapshot,
+  deleteDoc
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+
+export const parseDate = (val: any) => {
+  if (!val) return new Date();
+  if (val instanceof Timestamp) return val.toDate();
+  if (val?.seconds) return new Date(val.seconds * 1000);
+  if (val instanceof Date) return val;
+  return new Date(val);
+};
+
+export function subscribeToDashboardSummary(businessId: string, callback: (data: any) => void, role?: string, userId?: string) {
+  if (!businessId) return () => {};
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const state = {
+    bookings: [],
+    contacts: [],
+    inventory: [],
+    history: []
+  };
+
+  const emit = () => {
+    callback({
+      bookings: {
+        today: state.bookings.filter((b: any) => {
+          const d = parseDate(b.startTime);
+          return d >= today && d < tomorrow;
+        }).length,
+        upcoming: state.bookings.filter((b: any) => parseDate(b.startTime) >= today).length,
+        completed: state.bookings.filter((b: any) => b.status === "completed").length,
+        no_show: state.bookings.filter((b: any) => b.status === "no-show").length,
+      },
+      leads: {
+        total: state.contacts.length,
+        new: state.contacts.filter((c: any) => {
+          const d = parseDate(c.createdAt);
+          return (new Date().getTime() - d.getTime()) < 86400000;
+        }).length
+      },
+      inventory_alerts: state.inventory.filter((i: any) => i.quantity <= i.threshold),
+      all_bookings: state.bookings,
+      all_contacts: state.contacts,
+      all_inventory: state.inventory,
+      all_history: state.history
+    });
+  };
+
+  const handleError = (collectionName: string, err: any) => {
+    console.error(`Firestore subscription error (${collectionName}):`, err);
+  };
+
+  // Base Collections
+  const bookingsRef = collection(db, 'businesses', businessId, 'bookings');
+  const contactsRef = collection(db, 'businesses', businessId, 'contacts');
+  const inventoryRef = collection(db, 'businesses', businessId, 'inventory');
+  const historyRef = collection(db, 'businesses', businessId, 'stock_history');
+
+  // Subscription Handles
+  let unsubBookings = () => {};
+  let unsubContacts = () => {};
+  let unsubInventory = () => {};
+  let unsubHistory = () => {};
+
+  // 1. INVENTORY (Visible to everyone)
+  const inventoryQuery = inventoryRef;
+  unsubInventory = onSnapshot(inventoryQuery, (snap) => {
+    state.inventory = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
+    emit();
+  }, (err) => handleError('inventory', err));
+
+  // 2. BOOKINGS & CONTACTS & HISTORY (Restricted for Suppliers who are not owners)
+  // Check if user is allowed to view clinical data
+  // Suppliers generally only manage stock, unless they are the business owner.
+  const isClinicalStaff = role === 'doctor' || role === 'assistant' || userId === businessId;
+
+  if (isClinicalStaff && role !== 'supplier') {
+    // Apply RBAC filters for real-time snapshots
+    const bookingsQuery = (role === 'assistant' && userId) 
+      ? query(bookingsRef, where("assignedAssistantId", "==", userId))
+      : bookingsRef;
+
+    const contactsQuery = (role === 'assistant' && userId)
+      ? query(contactsRef, where("assignedAssistantId", "==", userId)) // Primary assignment
+      : contactsRef;
+
+    const historyQuery = (role === 'assistant' && userId)
+      ? query(historyRef, where("assignedAssistantId", "==", userId))
+      : historyRef;
+
+    unsubBookings = onSnapshot(bookingsQuery, (snap) => {
+      state.bookings = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
+      emit();
+    }, (err) => handleError('bookings', err));
+
+    unsubContacts = onSnapshot(contactsQuery, (snap) => {
+      state.contacts = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
+      emit();
+    }, (err) => handleError('contacts', err));
+
+    unsubHistory = onSnapshot(historyQuery, (snap) => {
+      state.history = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
+      emit();
+    }, (err) => handleError('history', err));
+  } else if (role === 'supplier') {
+     // Suppliers might need history of stock usage?
+     // Current rules allow history read if isDoctor or assignedAssistant.
+     // If supplier is owner (userId === businessId), they pass isDoctor check.
+     // Suppliers need history of stock usage regarding of ownership
+     unsubHistory = onSnapshot(historyRef, (snap) => {
+       state.history = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
+       emit();
+     }, (err) => handleError('history', err));
+  }
+
+  return () => {
+    unsubBookings();
+    unsubContacts();
+    unsubInventory();
+    unsubHistory();
+  };
+}
+
+export async function fetchDashboardSummary(businessId: string) {
+  if (!businessId) return null;
+
+  try {
+    // 0. Check if business exists
+    const businessRef = doc(db, 'businesses', businessId);
+    const businessSnap = await getDoc(businessRef);
+    
+    if (!businessSnap.exists()) {
+      return null; // Return null if onboarding isn't complete
+    }
+
+    // Still useful for a quick check or SSR
+    const [bookingsSnap, contactsSnap, inventorySnap] = await Promise.all([
+      getDocs(collection(db, 'businesses', businessId, 'bookings')),
+      getDocs(collection(db, 'businesses', businessId, 'contacts')),
+      getDocs(collection(db, 'businesses', businessId, 'inventory'))
+    ]);
+
+    const bookings = bookingsSnap.docs.map(doc => doc.data());
+    const contacts = contactsSnap.docs.map(doc => doc.data());
+    const inventory = inventorySnap.docs.map(doc => doc.data());
+
+    // Process data logic
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    return {
+      bookings: {
+        today: bookings.filter((b: any) => {
+          const d = parseDate(b.startTime);
+          return d >= today && d < tomorrow;
+        }).length,
+        upcoming: bookings.filter((b: any) => parseDate(b.startTime) >= today).length,
+        completed: bookings.filter((b: any) => b.status === "completed").length,
+        no_show: bookings.filter((b: any) => b.status === "no-show").length,
+      },
+      leads: {
+        total: contacts.length,
+        new: contacts.filter((c: any) => {
+          const d = parseDate(c.createdAt);
+          return (new Date().getTime() - d.getTime()) < 86400000;
+        }).length
+      },
+      inventory_alerts: inventory.filter((i: any) => i.quantity <= i.threshold)
+    };
+  } catch (error) {
+    console.error("Error fetching dashboard summary:", error);
+    throw error;
+  }
+}
+
+export async function createWorkspace(businessId: string, data: any) {
+  const businessRef = doc(db, 'businesses', businessId);
+  await setDoc(businessRef, {
+    ...data,
+    onboarding_step: 1,
+    is_active: false,
+    createdAt: serverTimestamp()
+  }, { merge: true });
+  return { status: 'success', businessId };
+}
+
+export async function submitContactForm(businessId: string, contactData: any) {
+  const contactsRef = collection(db, 'businesses', businessId, 'contacts');
+  await addDoc(contactsRef, {
+    ...contactData,
+    createdAt: serverTimestamp()
+  });
+  return { status: 'success' };
+}
+
+export async function createBooking(businessId: string, bookingData: any) {
+  try {
+    // 1. Get the business details to retrieve Google Token
+    const businessRef = doc(db, 'businesses', businessId);
+    const businessSnap = await getDoc(businessRef);
+    const businessData = businessSnap.data();
+
+    // 2. Save booking to Firestore
+    const bookingsRef = collection(db, 'businesses', businessId, 'bookings');
+    const docRef = await addDoc(bookingsRef, {
+      ...bookingData,
+      status: 'upcoming',
+      createdAt: serverTimestamp()
+    });
+
+    // 2b. Automatically create/update Contact (Patient) record
+    const contactsRef = collection(db, 'businesses', businessId, 'contacts');
+    // We'll use email as a simple unique identifier for this demo
+    const q = query(contactsRef, where("email", "==", bookingData.customerEmail));
+    const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.empty) {
+      await addDoc(contactsRef, {
+        name: bookingData.customerName,
+        email: bookingData.customerEmail,
+        phone: bookingData.customerPhone,
+        createdAt: serverTimestamp()
+      });
+    }
+
+    // 3. Optional: Sync with Google Calendar if token exists
+    if (businessData?.googleAccessToken) {
+      try {
+        const event = {
+          'summary': `Appointment: ${bookingData.customerName}`,
+          'description': `Service: ${bookingData.service}\nPhone: ${bookingData.customerPhone}`,
+          'start': {
+            'dateTime': bookingData.startTime, // Assuming ISO string from UI
+            'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+          'end': {
+            'dateTime': bookingData.endTime, // Assuming ISO string from UI
+            'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+        };
+
+        await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${businessData.googleAccessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(event)
+        });
+      } catch (gErr) {
+        console.error("Google Calendar Sync failed:", gErr);
+        // We don't fail the whole booking if calendar sync fails
+      }
+    }
+
+    // 4. Create Inbox Thread with Automated Message
+    await sendMessage(businessId, bookingData.customerEmail, {
+      content: `[Automated] Welcome ${bookingData.customerName}! We have received your booking request for ${bookingData.service}. Our team will review it shortly.`,
+      sender: 'system',
+      customerName: bookingData.customerName
+    });
+
+    return { status: 'success', bookingId: docRef.id };
+  } catch (error) {
+    console.error("Error creating booking:", error);
+    throw error;
+  }
+}
+
+export async function assignFormToAssistant(businessId: string, bookingId: string, assistantId: string) {
+  const bookingRef = doc(db, 'businesses', businessId, 'bookings', bookingId);
+  const bookingSnap = await getDoc(bookingRef);
+  
+  if (bookingSnap.exists()) {
+    const bookingData = bookingSnap.data();
+    await setDoc(bookingRef, {
+      status: 'pending_review', // Workflow transition: Shared with assistant = Handover Pending Review
+      assignedToAssistant: true, 
+      assignedAssistantId: assistantId,
+      assignedAt: serverTimestamp()
+    }, { merge: true });
+
+    // Propagate sharing to the Contact (Medical Record)
+    const contactsRef = collection(db, 'businesses', businessId, 'contacts');
+    const q = query(contactsRef, where("email", "==", bookingData.customerEmail));
+    const querySnapshot = await getDocs(q);
+    
+    if (!querySnapshot.empty) {
+      const contactId = querySnapshot.docs[0].id;
+      await setDoc(doc(db, 'businesses', businessId, 'contacts', contactId), {
+        sharedWithAssistant: true,
+        assignedAssistantId: assistantId,
+        lastSharedAt: serverTimestamp()
+      }, { merge: true });
+
+      const historyRef = collection(db, 'businesses', businessId, 'stock_history');
+      const histQ = query(historyRef, where("patientEmail", "==", bookingData.customerEmail));
+      const histSnap = await getDocs(histQ);
+      for (const histDoc of histSnap.docs) {
+        await setDoc(doc(db, 'businesses', businessId, 'stock_history', histDoc.id), {
+          assignedAssistantId: assistantId
+        }, { merge: true });
+      }
+    }
+
+    // --- AGENTIC PIPELINE TRIGGER ---
+    // Generate an automated clinical briefing for the assistant
+    const briefingContent = `[CLINICAL AGENT BRIEF] 
+A new medical record review has been delegated to you.
+PATIENT: ${bookingData.customerName}
+SERVICE: ${bookingData.service}
+URGENCY: Standard Clinical Review
+INSTRUCTIONS: Please analyze the digital intake submission for any pre-existing conditions or allergy flags before the doctor's final assessment.`;
+
+    await sendInternalMessage(businessId, assistantId, {
+      content: briefingContent,
+      sender: 'agent',
+      status: 'briefing',
+      patientName: bookingData.customerName
+    });
+  }
+
+  // --- AUTO-CONNECT: Ensure assistant is linked to this clinic ---
+  // If this is a freelance assistant (no businessId), link them to this doctor so they can access the dashboard.
+  try {
+    const assistantRef = doc(db, 'businesses', assistantId);
+    const assistantSnap = await getDoc(assistantRef);
+    if (assistantSnap.exists()) {
+      const asstData = assistantSnap.data();
+      if (!asstData.businessId) {
+        await setDoc(assistantRef, { businessId: businessId }, { merge: true });
+        console.log(`Auto-linked assistant ${assistantId} to clinic ${businessId}`);
+      }
+    }
+  } catch (err) {
+    console.warn("Assistant linking failed:", err);
+  }
+
+  return { status: 'success' };
+}
+
+export async function acceptForm(businessId: string, bookingId: string, patientEmail: string, patientName: string) {
+  const bookingRef = doc(db, 'businesses', businessId, 'bookings', bookingId);
+  
+  // 1. Update clinical status
+  await setDoc(bookingRef, {
+    status: 'scheduled',
+    acceptedAt: serverTimestamp()
+  }, { merge: true });
+
+  // 2. Automated Response to Patient requesting medical history
+  await sendMessage(businessId, patientEmail, {
+    content: `[CLINICAL UPDATE] Your intake form has been reviewed and accepted by the doctor. 
+
+To finalize your clinical profile and ensure an accurate assessment during our meeting, please reply to this message with any previous medical reports, laboratory results, or prescriptions you may have. 
+
+Once received, we will move forward with scheduling your appointment according to the doctor's current availability.`,
+    sender: 'doctor',
+    customerName: patientName,
+    type: 'request_reports'
+  });
+
+  return { status: 'success' };
+}
+
+export async function sendInternalMessage(businessId: string, assistantId: string, messageData: any) {
+  const messagesRef = collection(db, 'businesses', businessId, 'internal_chats', assistantId, 'messages');
+  await addDoc(messagesRef, {
+    ...messageData,
+    timestamp: serverTimestamp()
+  });
+
+  const chatRef = doc(db, 'businesses', businessId, 'internal_chats', assistantId);
+  await setDoc(chatRef, {
+    lastMsg: messageData.content,
+    lastMsgTime: serverTimestamp(),
+    assistantId: assistantId,
+    lastSender: messageData.sender
+  }, { merge: true });
+}
+
+export function subscribeToInternalMessages(businessId: string, assistantId: string, callback: (messages: any[]) => void) {
+  if (!businessId || !assistantId || businessId === 'undefined' || assistantId === 'undefined') return () => {};
+  
+  const q = query(collection(db, 'businesses', businessId, 'internal_chats', assistantId, 'messages'));
+  return onSnapshot(q, (snap) => {
+    const msgs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(msgs.sort((a: any, b: any) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)));
+  }, (err) => {
+    console.warn(`Internal Chat Error (${assistantId}):`, err);
+    callback([]);
+  });
+}
+
+export async function updateUserActivity(uid: string) {
+  if (!uid) return;
+  const userRef = doc(db, 'businesses', uid);
+  await setDoc(userRef, { lastActive: serverTimestamp() }, { merge: true });
+}
+
+export async function fetchActiveAssistants() {
+  try {
+    const q = query(collection(db, 'businesses'));
+    const snap = await getDocs(q);
+    return snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.warn("Clinical network restricted by Firebase Security Rules. Using local discovery.");
+    return [];
+  }
+}
+
+export function subscribeToActiveStaff(callback: (staff: any[]) => void) {
+  const q = query(collection(db, 'businesses'));
+  return onSnapshot(q, (snap) => {
+    const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(list);
+  }, (err) => {
+    console.error("Staff subscription failed:", err);
+  });
+}
+
+export async function updateBookingStatus(businessId: string, bookingId: string, status: 'upcoming' | 'scheduled' | 'completed' | 'no-show' | 'rejected') {
+  try {
+    const businessRef = doc(db, 'businesses', businessId);
+    const bookingRef = doc(db, 'businesses', businessId, 'bookings', bookingId);
+    
+    const [bizSnap, bookingSnap] = await Promise.all([
+      getDoc(businessRef),
+      getDoc(bookingRef)
+    ]);
+
+    if (!bizSnap.exists() || !bookingSnap.exists()) {
+      // If the booking was deleted or doesn't exist, we still want to try to update if possible 
+      // but we can't trigger emails with missing data.
+      await setDoc(bookingRef, { status, updatedAt: serverTimestamp() }, { merge: true });
+      return { status: 'success' };
+    }
+
+    const bizData = bizSnap.data();
+    const bookingData = bookingSnap.data();
+    const customerName = bookingData?.customerName || bookingData?.name || 'Patient';
+    const customerEmail = bookingData?.customerEmail || bookingData?.email;
+
+    // 1. Update Firestore
+    await setDoc(bookingRef, { status, updatedAt: serverTimestamp() }, { merge: true });
+
+    // 2. Trigger Professional Email (Simulated for Hackathon)
+    if (customerEmail) {
+      const isAccepted = status === 'completed';
+      const subject = isAccepted 
+        ? `Confirmed: Your appointment with ${bizData?.businessName || 'MediWeb'}`
+        : `Update: Your appointment request at ${bizData?.businessName || 'MediWeb'}`;
+
+      const bookingDate = parseDate(bookingData?.startTime);
+      const professionalEmailLink = `mailto:${customerEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(
+        isAccepted 
+        ? `Dear ${customerName},\n\nThis is a professional confirmation that your appointment for ${bookingData?.service} has been ACCEPTED.\n\nDate: ${bookingDate.toLocaleDateString()}\nTime: ${bookingDate.toLocaleTimeString()}\n\nWe look forward to seeing you.\n\nBest regards,\n${bizData?.businessName || 'The Medical Team'}`
+        : `Dear ${customerName},\n\nThank you for reaching out to us. Regarding your appointment request for ${bookingData?.service}, we unfortunately cannot accommodate this specific slot at this time.\n\nWe invite you to book an alternative time via our portal. We apologize for any inconvenience.\n\nBest regards,\n${bizData?.businessName || 'The Medical Team'}`
+      )}`;
+      
+      console.log(`%c EMAIL DISPATCHED TO: ${customerEmail}`, "color: #10b981; font-weight: bold; font-size: 12px;");
+    }
+
+    // 3. Send Message to Inbox
+    if (customerEmail) {
+      if (status === 'completed') {
+        await sendMessage(businessId, customerEmail, {
+          content: `Dear ${customerName}, your appointment has been accepted. Please share your previous medical history certificates and any relevant radiology reports for review before your visit.`,
+          sender: 'staff',
+          customerName: customerName
+        });
+      } else {
+        await sendMessage(businessId, customerEmail, {
+          content: `Update: Your appointment request for ${bookingData?.service} status has been updated to: ${status.toUpperCase()}.`,
+          sender: 'system',
+          customerName: customerName
+        });
+      }
+    }
+
+    return { status: 'success' };
+  } catch (err) {
+    console.error("Status update + Email failed:", err);
+    throw err;
+  }
+}
+
+export async function seedFakeBooking(businessId: string) {
+  const startTime = new Date();
+  startTime.setHours(startTime.getHours() + 2);
+  const endTime = new Date(startTime);
+  endTime.setMinutes(endTime.getMinutes() + 45);
+
+  return createBooking(businessId, {
+    customerName: "Alex Rivera",
+    customerEmail: "alex@example.com",
+    customerPhone: "+1 (555) 012-3456",
+    service: "Initial Consultation",
+    startTime: startTime.toISOString(),
+    endTime: endTime.toISOString(),
+    status: "upcoming"
+  });
+}
+
+export async function seedStaff(businessId: string) {
+  const assistants = [
+    {
+      displayName: "Sarah Chen",
+      email: "sarah.chen@mediweb.clinic",
+      role: "assistant",
+      lastActive: serverTimestamp(),
+      profileCompleted: true,
+      businessId: businessId // Link to this doctor
+    },
+    {
+      displayName: "James Wilson",
+      email: "j.wilson@mediweb.clinic",
+      role: "assistant",
+      lastActive: serverTimestamp(),
+      profileCompleted: true,
+      businessId: businessId // Link to this doctor
+    }
+  ];
+
+  for (const a of assistants) {
+    await addDoc(collection(db, 'businesses'), {
+      ...a,
+      createdAt: serverTimestamp()
+    });
+  }
+}
+
+export async function seedFakeData(businessId: string) {
+  try {
+    // 1. Seed a patient
+    const contactsRef = collection(db, 'businesses', businessId, 'contacts');
+    await addDoc(contactsRef, {
+      name: "Marcus Aurelius",
+      email: "marcus@rome.gov",
+      phone: "+1 (999) 001-0002",
+      createdAt: serverTimestamp()
+    });
+
+    // 2. Seed inventory items
+    const inventoryRef = collection(db, 'businesses', businessId, 'inventory');
+    await addDoc(inventoryRef, {
+      name: "Surgical Masks (Box)",
+      quantity: 3,
+      threshold: 10,
+      updatedAt: serverTimestamp()
+    });
+    await addDoc(inventoryRef, {
+      name: "Saline Solution 500ml",
+      quantity: 45,
+      threshold: 15,
+      updatedAt: serverTimestamp()
+    });
+
+    // 3. Seed a booking
+    await seedFakeBooking(businessId);
+    
+    // 4. Seed staff
+    await seedStaff(businessId);
+    
+    return { status: 'success' };
+  } catch (error) {
+    console.error("Seeding failed:", error);
+    throw error;
+  }
+}
+
+export async function updateInventoryItem(businessId: string, itemId: string, data: any) {
+  const itemRef = doc(db, 'businesses', businessId, 'inventory', itemId);
+  await setDoc(itemRef, {
+    ...data,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+  return { status: 'success' };
+}
+export async function logStockActions(businessId: string, actions: any[], patientName: string, patientEmail?: string) {
+  if (!businessId) throw new Error("Missing Clinical Context (BusinessID)");
+  if (!actions || actions.length === 0) return { status: 'skipped' };
+
+  try {
+    // Determine if this patient is currently assigned to an assistant
+    let assistantId = null;
+    if (patientEmail) {
+      const q = query(collection(db, 'businesses', businessId, 'contacts'), where("email", "==", patientEmail));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        assistantId = snap.docs[0].data().assignedAssistantId || null;
+      }
+    }
+
+    for (const action of actions) {
+      if (!action.itemName) continue;
+
+      const q = query(collection(db, 'businesses', businessId, 'inventory'), where("name", "==", action.itemName));
+      const querySnapshot = await getDocs(q);
+      
+      let itemRef;
+      let currentQty = 0;
+
+      if (!querySnapshot.empty) {
+        const itemDoc = querySnapshot.docs[0];
+        itemRef = doc(db, 'businesses', businessId, 'inventory', itemDoc.id);
+        currentQty = itemDoc.data().quantity || 0;
+      } else {
+        const inventoryRef = collection(db, 'businesses', businessId, 'inventory');
+        const newDoc = await addDoc(inventoryRef, {
+          name: action.itemName,
+          quantity: 0,
+          threshold: 5,
+          category: 'Medical',
+          updatedAt: serverTimestamp()
+        });
+        itemRef = newDoc;
+      }
+
+      const amount = Number(action.amount) || 0;
+      const adjustment = action.action === 'Stock In' ? amount : -amount;
+      const newQty = Math.max(0, currentQty + adjustment);
+
+      await setDoc(itemRef, {
+        quantity: newQty,
+        lastPatient: patientName,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    }
+
+    // 2. Save a permanent record of this "order" session
+    const historyRef = collection(db, 'businesses', businessId, 'stock_history');
+    await addDoc(historyRef, {
+      patientName,
+      patientEmail: patientEmail || null,
+      assignedAssistantId: assistantId,
+      items: actions,
+      createdAt: serverTimestamp()
+    });
+
+    return { status: 'success' };
+  } catch (error: any) {
+    console.error("Clinical Stock Log Failed:", error.message || error);
+    throw new Error(`Critical: ${error.message || 'Database connection lost'}`);
+  }
+}
+
+export function subscribeToPatientHistory(businessId: string, patientName: string, callback: (logs: any[]) => void) {
+  const q = query(
+    collection(db, 'businesses', businessId, 'stock_history'),
+    where("patientName", "==", patientName)
+  );
+
+  return onSnapshot(q, (snap) => {
+    const logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(logs);
+  });
+}
+
+// --- MESSAGING SYSTEM ---
+
+export async function sendMessage(businessId: string, customerEmail: string, messageData: any) {
+  const messagesRef = collection(db, 'businesses', businessId, 'customer_chats', customerEmail, 'messages');
+  await addDoc(messagesRef, {
+    ...messageData,
+    timestamp: serverTimestamp()
+  });
+
+  // Update conversation metadata
+  const inboxRef = doc(db, 'businesses', businessId, 'customer_chats', customerEmail);
+  const metadata: any = {
+    lastMsg: messageData.content,
+    lastMsgTime: serverTimestamp(),
+    customerEmail: customerEmail,
+    unread: messageData.sender !== 'staff'
+  };
+
+  if (messageData.customerName) {
+    metadata.customerName = messageData.customerName;
+  }
+
+  await setDoc(inboxRef, metadata, { merge: true });
+}
+
+export function subscribeToInbox(businessId: string, callback: (conversations: any[]) => void) {
+  if (!businessId || businessId === 'undefined') return () => {};
+  
+  return onSnapshot(collection(db, 'businesses', businessId, 'customer_chats'), (snap) => {
+    const conversations = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(conversations);
+  }, (err) => {
+    console.warn("Inbox subscription failed:", err);
+    callback([]);
+  });
+}
+
+export function subscribeToMessages(businessId: string, customerEmail: string, callback: (messages: any[]) => void) {
+  if (!businessId || !customerEmail || businessId === 'undefined' || customerEmail === 'undefined') return () => {};
+  
+  const q = query(collection(db, 'businesses', businessId, 'customer_chats', customerEmail, 'messages'));
+  return onSnapshot(q, (snap) => {
+    const msgs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(msgs.sort((a: any, b: any) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)));
+  }, (err) => {
+    console.warn("Message thread failed:", err);
+    callback([]);
+  });
+}
+
+export async function bulkUpdateInventory(businessId: string, items: any[]) {
+  const inventoryRef = collection(db, 'businesses', businessId, 'inventory');
+  for (const item of items) {
+    if (!item.name) continue;
+    
+    const q = query(inventoryRef, where("name", "==", item.name));
+    const snap = await getDocs(q);
+    
+    if (!snap.empty) {
+      await setDoc(doc(inventoryRef, snap.docs[0].id), {
+        quantity: Number(item.quantity) || 0,
+        threshold: Number(item.threshold) || 5,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } else {
+      await addDoc(inventoryRef, {
+        name: item.name,
+        quantity: Number(item.quantity) || 0,
+        threshold: Number(item.threshold) || 5,
+        updatedAt: serverTimestamp(),
+        category: 'Medical'
+      });
+    }
+  }
+  return { status: 'success' };
+}
+
+export async function fetchPatientContext(businessId: string, patientEmail: string, patientName: string) {
+  try {
+    const contactsRef = collection(db, 'businesses', businessId, 'contacts');
+    const q = query(contactsRef, where("email", "==", patientEmail));
+    const snap = await getDocs(q);
+    
+    let report = "";
+    let medicalLogs: any[] = [];
+    let personalInfo: any = {};
+
+    if (!snap.empty) {
+      const contactDoc = snap.docs[0];
+      const contactId = contactDoc.id;
+      personalInfo = { id: contactId, ...contactDoc.data() };
+
+      const reportRef = doc(db, 'businesses', businessId, 'contacts', contactId, 'private', 'report');
+      const reportSnap = await getDoc(reportRef);
+      if (reportSnap.exists()) {
+        report = reportSnap.data().content || "";
+      }
+    }
+
+    const historyRef = collection(db, 'businesses', businessId, 'stock_history');
+    const hQ = query(historyRef, where("patientName", "==", patientName));
+    const hSnap = await getDocs(hQ);
+    medicalLogs = hSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    return { personalInfo, report, medicalLogs };
+  } catch (err) {
+    console.error("Patient context fetch failed:", err);
+    return null;
+  }
+}
+
+export async function deleteChat(businessId: string, chatId: string, type: 'patients' | 'staff') {
+  const path = type === 'patients' ? 'customer_chats' : 'internal_chats';
+  const chatRef = doc(db, 'businesses', businessId, path, chatId);
+  await deleteDoc(chatRef);
+}

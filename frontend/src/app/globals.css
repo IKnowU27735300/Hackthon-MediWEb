@@ -1,0 +1,220 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Default Dark (Black) */
+  --foreground-rgb: 255, 255, 255;
+  --background-rgb: 0, 0, 0;
+  
+  --card-bg: rgba(255, 255, 255, 0.03);
+  --card-border: rgba(255, 255, 255, 0.1);
+  --input-bg: rgba(255, 255, 255, 0.05);
+  --input-text: #fff;
+  --input-placeholder: rgba(255, 255, 255, 0.2);
+  --glass-shadow: rgba(0,0,0,0.5);
+  
+  /* Primary Actions */
+  --primary-start: #d4af37;
+  --primary-end: #826a33;
+  --btn-text: #eaded0;
+}
+
+/* Light Mode Override */
+.light-mode {
+  /* Light Bluish White Background */
+  --foreground-rgb: 15, 23, 42; /* Slate-900 */
+  --background-rgb: 240, 249, 255; /* Sky-50 */
+  
+  --card-bg: rgba(255, 255, 255, 0.8);
+  --card-border: rgba(14, 165, 233, 0.3); /* Sky-500/30 */
+  --input-bg: #ffffff;
+  --input-text: #0f172a;
+  --input-placeholder: rgba(15, 23, 42, 0.4);
+  --glass-shadow: rgba(14, 165, 233, 0.15);
+  
+  /* Light Blue Animation Effect for Buttons */
+  --primary-start: #0ea5e9; /* Sky-500 */
+  --primary-end: #0284c7; /* Sky-600 */
+  --btn-text: #fff;
+
+  /* Theme-aware opacities */
+  --text-muted: rgba(15, 23, 42, 0.5);
+  --text-dim: rgba(15, 23, 42, 0.3);
+  --border-muted: rgba(14, 165, 233, 0.2);
+  --bg-muted: rgba(14, 165, 233, 0.05);
+}
+
+:root:not(.light-mode) {
+  --text-muted: rgba(255, 255, 255, 0.5);
+  --text-dim: rgba(255, 255, 255, 0.3);
+  --border-muted: rgba(255, 255, 255, 0.1);
+  --bg-muted: rgba(255, 255, 255, 0.05);
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background-color: rgb(var(--background-rgb));
+  background-attachment: fixed;
+  min-height: 100vh;
+  margin: 0;
+  overflow-x: hidden;
+  transition: background-color 0.5s ease, color 0.5s ease;
+}
+
+/* Dark Mode Background Effect only */
+:not(.light-mode) body {
+  background-image: 
+    radial-gradient(circle at 10% 10%, rgba(212, 175, 55, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 90% 90%, rgba(197, 160, 33, 0.05) 0%, transparent 40%);
+}
+
+/* Light Mode Background Effect only */
+.light-mode body {
+  background-image: 
+    radial-gradient(circle at 10% 10%, rgba(56, 189, 248, 0.2) 0%, transparent 40%),
+    radial-gradient(circle at 90% 90%, rgba(14, 165, 233, 0.15) 0%, transparent 40%);
+}
+
+@layer components {
+  .glass-card {
+    @apply backdrop-blur-xl rounded-2xl transition-all duration-300;
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    box-shadow: 0 8px 32px var(--glass-shadow);
+  }
+  
+  .glass-button {
+    @apply px-6 py-3 font-bold rounded-xl transition-all duration-300 active:scale-95 shadow-lg;
+    background: linear-gradient(135deg, var(--primary-start), var(--primary-end));
+    color: var(--btn-text);
+  }
+  
+  .glass-button:hover {
+    @apply -translate-y-0.5 shadow-xl;
+    filter: brightness(1.1);
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r;
+    /* Default Gold Gradient */
+    background-image: linear-gradient(to right, #daad37, #edd69b, #fff);
+  }
+
+  .light-mode .gradient-text {
+    /* Blue/Sky Gradient */
+    background-image: linear-gradient(to right, #0ea5e9, #0284c7, #38bdf8);
+  }
+
+  .glass-input {
+    @apply w-full rounded-xl px-4 py-3 focus:outline-none transition-all shadow-sm;
+    background-color: var(--input-bg);
+    border: 1px solid var(--card-border);
+    color: var(--input-text);
+  }
+  
+  .glass-input::placeholder {
+    color: var(--input-placeholder);
+  }
+  
+  .glass-input:focus {
+    border-color: var(--primary-start);
+    box-shadow: 0 0 0 2px rgba(var(--primary-start-rgb), 0.2);
+  }
+
+  .light-mode .glass-input:focus {
+    background-color: #fff;
+    box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15);
+    border-color: #0ea5e9;
+  }
+
+  .glass-badge {
+    @apply px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-white/5 border border-white/10;
+  }
+
+  .light-mode .glass-badge {
+    @apply bg-sky-500/10 border-sky-500/20 text-sky-700;
+  }
+}
+
+/* Theme-aware Utility Classes */
+.text-muted { color: var(--text-muted); }
+.text-dim { color: var(--text-dim); }
+.border-theme { border-color: var(--card-border); }
+.bg-theme { background-color: rgb(var(--background-rgb)); }
+.bg-theme-muted { background-color: var(--bg-muted); }
+
+/* Light Mode Specific Overrides */
+.light-mode .text-white\/40, 
+.light-mode .text-white\/30,
+.light-mode .text-white\/20,
+.light-mode .text-white\/50 {
+  color: var(--text-muted) !important;
+}
+
+.light-mode .bg-white\/5,
+.light-mode .bg-white\/10 {
+  background-color: var(--bg-muted) !important;
+  border-color: var(--border-muted) !important;
+}
+
+.light-mode .border-white\/10,
+.light-mode .border-white\/20 {
+  border-color: var(--border-muted) !important;
+}
+
+.light-mode .text-primary-200\/40,
+.light-mode .text-primary-400\/60,
+.light-mode .text-primary-200\/60 {
+  color: var(--text-muted) !important;
+}
+
+.light-mode .bg-black {
+  background-color: rgb(var(--background-rgb)) !important;
+}
+
+.light-mode .bg-primary-600 {
+  background-color: #0ea5e9 !important;
+  color: white !important;
+}
+
+.light-mode .bg-primary-600\/10 {
+  background-color: rgba(14, 165, 233, 0.1) !important;
+}
+
+.light-mode .shadow-primary-950\/40 {
+  shadow-color: rgba(14, 165, 233, 0.2) !important;
+}
+
+.light-mode .glass-button:hover,
+.light-mode button.bg-white\/5:hover,
+.light-mode button.bg-white\/10:hover {
+  background: rgba(56, 189, 248, 0.25) !important;
+  border-color: rgba(14, 165, 233, 0.5) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 25px rgba(56, 189, 248, 0.25);
+}
+
+/* Sidebar Nav Item Override for Light Mode */
+.light-mode .group .text-white\/30,
+.light-mode .group .text-white\/50 {
+    color: rgba(15, 23, 42, 0.5) !important;
+}
+.light-mode .group:hover .text-white\/60 {
+    color: #0284c7 !important;
+}
+
+.animate-heartbeat {
+  stroke-dasharray: 600;
+  animation: heartbeat 2s linear infinite;
+}
+
+@keyframes pulse-gold {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.8; }
+}
+
+.animate-pulse-gold {
+  animation: pulse-gold 2s ease-in-out infinite;
+}
