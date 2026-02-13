@@ -31,27 +31,30 @@ def run_app():
     backend_path = os.path.join(root_path, "backend")
     frontend_path = os.path.join(root_path, "frontend")
 
-    print("Starting MediWeb Backend and Frontend...")
-    # Command for backend (FastAPI via Uvicorn) on port 8001
-    backend_cmd = f"{sys.executable} -m uvicorn main:app --host 0.0.0.0 --port 8001"
+    # Render/Cloud Platforms provide a dynamic PORT
+    # Use 8000 as a local fallback
+    unified_port = os.environ.get("PORT", "8000")
+    # Backend will run on a different internal port
+    backend_port = "8001"
 
-    # Command for frontend (Next.js)
-    # Inside Docker (standalone build), we run: node server.js
-    # Locally (dev mode), we run: npm run dev
+    print(f"[SYSTEM] Starting MediWeb on Gateway Port: {unified_port}")
+
+    # Command for backend (FastAPI via Uvicorn)
+    backend_cmd = f"python3 -m uvicorn main:app --host 0.0.0.0 --port {backend_port}"
+
+    # Set mandatory Next.js host for Docker/Cloud
+    os.environ["HOSTNAME"] = "0.0.0.0"
+    os.environ["PORT"] = unified_port
+
     standalone_path = os.path.join(frontend_path, "server.js")
     if os.path.exists(standalone_path):
-        print(f"[SYSTEM] Detected standalone build. Running in PRODUCTION mode.")
-        # Standalone server needs to know its port
-        os.environ["PORT"] = "8000" 
+        print(f"[SYSTEM] PRODUCTION MODE: Running Next.js standalone.")
         frontend_cmd = f"node {standalone_path}"
     else:
-        print(f"[SYSTEM] No standalone build found. Running in DEVELOPMENT mode.")
-        frontend_cmd = "npm run dev -- -p 8000"
+        print(f"[SYSTEM] DEVELOPMENT MODE: Running Next.js dev.")
+        frontend_cmd = f"npm run dev -- -p {unified_port}"
 
-    print(f"DEBUG: backend_cmd={backend_cmd}")
-    print(f"DEBUG: frontend_cmd={frontend_cmd}")
-
-    # Create threads for parallel execution
+    # Create threads
     backend_thread = threading.Thread(
         target=run_command, 
         args=(backend_cmd, backend_path, "BACKEND"),
@@ -64,25 +67,28 @@ def run_app():
         daemon=True
     )
 
-    # Start processes
     backend_thread.start()
-    # Tiny delay to let the backend initialize
-    time.sleep(2) 
+    time.sleep(3) # Give backend a moment to bind
     frontend_thread.start()
 
     print("\n" + "="*50)
-    print("🚀 MediWeb is taking off on a SINGLE PORT!")
-    print(f"🔗 Unified Access Hub: http://localhost:8000")
-    print(f"   (Frontend + Backend integrated via Port 8000)")
+    print("🚀 MediWeb Deployment Status")
+    print(f"🔗 Gateway URL: http://0.0.0.0:{unified_port}")
+    print(f"🔗 Internal API: http://0.0.0.0:{backend_port}")
     print("="*50 + "\n")
 
     try:
-        # Keep the main thread alive while runners are active
         while True:
-            time.sleep(1)
+            # Check if threads are still alive
+            if not backend_thread.is_alive():
+                print("🛑 CRITICAL: Backend thread died!")
+                return
+            if not frontend_thread.is_alive():
+                print("🛑 CRITICAL: Frontend thread died!")
+                return
+            time.sleep(2)
     except KeyboardInterrupt:
-        print("\n🛑 Shutting down MediWeb...")
-        # Since they are daemon threads, they will close when main exits
+        print("\n🛑 Shutting down...")
 
 if __name__ == "__main__":
     run_app()
