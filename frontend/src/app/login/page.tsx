@@ -76,7 +76,8 @@ export default function LoginPage() {
       }, { merge: true });
       router.push('/dashboard');
     } catch (err: any) {
-      setError("Failed to login with Google.");
+      console.error("Google Login Error:", err);
+      setError(err.message || "Failed to login with Google.");
       setLoading(false);
     }
   };

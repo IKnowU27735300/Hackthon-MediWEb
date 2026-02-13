@@ -8,14 +8,14 @@ import {
 import { getAnalytics, isSupported } from "firebase/analytics";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyC54guTb0WrnofHywIsh5GTWee0tmfDEGA",
-  authDomain: "aiattendance-9ca58.firebaseapp.com",
-  databaseURL: "https://aiattendance-9ca58-default-rtdb.firebaseio.com",
-  projectId: "aiattendance-9ca58",
-  storageBucket: "aiattendance-9ca58.firebasestorage.app",
-  messagingSenderId: "609262233779",
-  appId: "1:609262233779:web:37c775542953637075a8c6",
-  measurementId: "G-RM6H9WJNGV"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyC54guTb0WrnofHywIsh5GTWee0tmfDEGA",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "aiattendance-9ca58.firebaseapp.com",
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || "https://aiattendance-9ca58-default-rtdb.firebaseio.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "aiattendance-9ca58",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "aiattendance-9ca58.firebasestorage.app",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "609262233779",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:609262233779:web:37c775542953637075a8c6",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-RM6H9WJNGV"
 };
 
 // Initialize Firebase
