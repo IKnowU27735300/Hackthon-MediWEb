@@ -25,7 +25,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { addDoc, collection, serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-export default function BookingsPage() {
+import { Suspense } from 'react';
+
+function BookingsPageContent() {
   const { user, role, businessId, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -465,5 +467,17 @@ export default function BookingsPage() {
         </AnimatePresence>
       </main>
     </div>
+  );
+}
+
+export default function BookingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
+      </div>
+    }>
+      <BookingsPageContent />
+    </Suspense>
   );
 }

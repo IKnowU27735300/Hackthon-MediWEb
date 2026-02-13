@@ -39,7 +39,9 @@ import {
 import { addDoc, collection, serverTimestamp, updateDoc, doc } from 'firebase/firestore'; // Added addDoc, updateDoc
 import { db } from '@/lib/firebase'; // Added db import
 
-export default function PatientsPage() {
+import { Suspense } from 'react';
+
+function PatientsPageContent() {
   const { user, role, businessId, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -883,5 +885,17 @@ export default function PatientsPage() {
         </AnimatePresence>
       </main>
     </div>
+  );
+}
+
+export default function PatientsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
+      </div>
+    }>
+      <PatientsPageContent />
+    </Suspense>
   );
 }
