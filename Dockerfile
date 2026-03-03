@@ -1,5 +1,5 @@
 # --- Stage 1: Build Frontend ---
-FROM node:18-slim AS frontend-builder
+FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY frontend ./
 RUN npm run build
 
 # --- Stage 2: Final Combined Image ---
-FROM node:18-slim
+FROM node:20-slim
 WORKDIR /app
 
 # Install Python and build dependencies for psycopg2/uvicorn
