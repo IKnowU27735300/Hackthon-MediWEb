@@ -17,9 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
+@app.get("/health")
 def read_root():
-    return {"message": "MediWeb API is running"}
+    return {"status": "ok", "message": "MediWeb API is running"}
 
 # Onboarding Flow APIs
 

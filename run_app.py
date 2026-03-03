@@ -49,9 +49,15 @@ def run_app():
     frontend_path = os.path.join(root_path, "frontend")
 
     unified_port = os.environ.get("PORT", "8000")
-    backend_port = "8001"
+    backend_port = os.environ.get("BACKEND_PORT", "8001")
     
-    print(f"[SYSTEM] Initializing MediWeb...")
+    print(f"\n" + "="*50)
+    print(f"🛠️  MEDIWEB DEPLOYMENT SYSTEM")
+    print(f"🌐 Main URL/Port (Frontend): {unified_port}")
+    print(f"⚙️  System Port (Backend): {backend_port}")
+    print("="*50 + "\n")
+
+    print(f"[SYSTEM] Cleaning up ports...")
     kill_port(unified_port)
     kill_port(backend_port)
 
@@ -73,31 +79,44 @@ def run_app():
     # Check for standalone or dev mode
     standalone_path = os.path.join(frontend_path, "server.js")
     if os.path.exists(standalone_path):
+        print(f"[FRONTEND] Found production build (server.js).")
         frontend_cmd = f"node {standalone_path}"
     else:
         # On Windows 'npm' might need to be 'npm.cmd'
         npm_cmd = "npm.cmd" if os.name == 'nt' else "npm"
-        frontend_cmd = f"{npm_cmd} run dev -- -p {unified_port}"
+        if os.environ.get("NODE_ENV") == "production":
+            print(f"[FRONTEND] Starting in Production mode via npm.")
+            frontend_cmd = f"{npm_cmd} run start -- -p {unified_port}"
+        else:
+            print(f"[FRONTEND] Starting in Development mode via npm.")
+            frontend_cmd = f"{npm_cmd} run dev -- -p {unified_port}"
 
     # Threads
     backend_thread = threading.Thread(target=run_command, args=(backend_cmd, backend_path, "BACKEND"), daemon=True)
     frontend_thread = threading.Thread(target=run_command, args=(frontend_cmd, frontend_path, "FRONTEND"), daemon=True)
 
+    print("[SYSTEM] Starting Backend...")
     backend_thread.start()
-    time.sleep(5) # Increased wait for backend
+    
+    print("[SYSTEM] Waiting for backend to warm up...")
+    time.sleep(8) 
+    
+    print("[SYSTEM] Starting Frontend...")
     frontend_thread.start()
 
-    print("\n" + "="*50)
-    print("🚀 MediWeb is Launching!")
-    print(f"🔗 Access the Website: http://localhost:{unified_port}")
-    print("="*50 + "\n")
+    print("\n🚀 MediWeb is Launching!")
+    print(f"🔗 Main Interface: http://{os.environ.get('HOSTNAME', 'localhost')}:{unified_port}")
+    print(f"🛡️  Backend API: http://{os.environ.get('HOSTNAME', 'localhost')}:{backend_port}")
 
     try:
         while True:
-            if not backend_thread.is_alive() and not frontend_thread.is_alive():
-                print("🛑 Both services stopped. Exiting.")
-                break
-            time.sleep(2)
+            if not backend_thread.is_alive() or not frontend_thread.is_alive():
+                b_stat = "RUNNING" if backend_thread.is_alive() else "STOPPED"
+                f_stat = "RUNNING" if frontend_thread.is_alive() else "STOPPED"
+                print(f"[MONITOR] Status: Backend={b_stat}, Frontend={f_stat}")
+                if not backend_thread.is_alive() and not frontend_thread.is_alive():
+                    break
+            time.sleep(5)
     except KeyboardInterrupt:
         print("\n🛑 Closing MediWeb...")
 
