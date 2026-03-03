@@ -30,8 +30,8 @@ COPY --from=frontend-builder /app/frontend/.next/standalone ./frontend/
 COPY --from=frontend-builder /app/frontend/.next/static ./frontend/.next/static
 COPY --from=frontend-builder /app/frontend/public ./frontend/public
 
-# Copy Orchestrator
-COPY run_app.py .
+# Copy Orchestrator and root package.json for Railway
+COPY run_app.py package.json ./
 
 # Environment setup
 ENV NODE_ENV=production

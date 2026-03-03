@@ -1,0 +1,7 @@
+{
+  "name": "mediweb-root",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "python3 run_app.py"
+  }
+}
