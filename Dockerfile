@@ -21,13 +21,14 @@ RUN apt-get update && apt-get install -y \
 
 # Copy Backend
 COPY backend/requirements.txt ./backend/
-RUN pip3 install --no-cache-dir --default-timeout=100 -r backend/requirements.txt --break-system-packages
+RUN pip3 install --no-cache-dir -r backend/requirements.txt --break-system-packages
 
 COPY backend ./backend
 
 # Copy Built Frontend (Standalone)
 COPY --from=frontend-builder /app/frontend/.next/standalone ./frontend/
 COPY --from=frontend-builder /app/frontend/.next/static ./frontend/.next/static
+COPY --from=frontend-builder /app/frontend/public ./frontend/public
 
 # Copy Orchestrator
 COPY run_app.py .
