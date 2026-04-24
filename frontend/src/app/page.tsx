@@ -47,7 +47,7 @@ export default function LandingPage() {
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === 'admin' || password === '1234') {
+    if (password === '1234') {
       router.push('/login');
     } else {
       setError(true);
@@ -192,10 +192,6 @@ export default function LandingPage() {
                   Verify Access
                 </button>
               </form>
-              
-              <div className="mt-4 text-center">
-                 <p className="text-[10px] text-muted font-mono">Hint: admin</p>
-              </div>
             </motion.div>
           </div>
         )}
