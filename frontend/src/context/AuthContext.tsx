@@ -13,6 +13,7 @@ interface AuthContextType {
   businessId: string | null;
   isProfileComplete: boolean;
   displayName: string | null;
+  location: string | null;
   loading: boolean;
 }
 
@@ -22,6 +23,7 @@ const AuthContext = createContext<AuthContextType>({
   businessId: null, 
   isProfileComplete: true, 
   displayName: null,
+  location: null,
   loading: true 
 });
 
@@ -31,6 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [isProfileComplete, setIsProfileComplete] = useState(true);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [location, setLocation] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,6 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRole(null);
         setBusinessId(null);
         setDisplayName(null);
+        setLocation(null);
         setLoading(false);
       }
     });
@@ -66,12 +70,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           let userRole: UserRole = 'doctor';
           let userBusinessId: string = user.uid;
           let profileDisplayName: string | null = null;
+          let profileLocation: string | null = null;
           let profileComplete = false;
 
           if (snap.exists()) {
             const data = snap.data();
             userRole = (data.role as UserRole) || 'doctor';
             profileDisplayName = data.displayName || null;
+            profileLocation = data.location || null;
             profileComplete = !!data.profileCompleted;
             
             if (userRole === 'assistant' && data.businessId) {
@@ -84,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setBusinessId(userBusinessId);
             setIsProfileComplete(profileComplete);
             setDisplayName(profileDisplayName);
+            setLocation(profileLocation);
             setLoading(false);
             clearTimeout(safetyTimeout);
           }
@@ -142,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.uid]); // Use uid as stable dependency
 
   return (
-    <AuthContext.Provider value={{ user, role, businessId, isProfileComplete, displayName, loading }}>
+    <AuthContext.Provider value={{ user, role, businessId, isProfileComplete, displayName, location, loading }}>
         {children}
     </AuthContext.Provider>
   );

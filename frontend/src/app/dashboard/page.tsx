@@ -39,7 +39,7 @@ import { AssistantDashboard } from '@/components/dashboards/AssistantDashboard';
 import { SupplierDashboard } from '@/components/dashboards/SupplierDashboard';
 
 export default function Dashboard() {
-  const { user, role, businessId, isProfileComplete: authProfileComplete, loading: authLoading } = useAuth();
+  const { user, role, businessId, location: userLocation, isProfileComplete: authProfileComplete, loading: authLoading } = useAuth();
   const [isProfileComplete, setIsProfileComplete] = useState(authProfileComplete);
   const router = useRouter();
   const [stats, setStats] = useState<any>(null);
@@ -50,6 +50,8 @@ export default function Dashboard() {
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'booking' | 'form' | 'inventory'>('booking');
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [activeStaff, setActiveStaff] = useState<any[]>([]);
@@ -91,57 +93,29 @@ export default function Dashboard() {
 
   // Data Sync
   useEffect(() => {
-    let isMounted = true;
     if (authLoading || !user || !businessId) return;
 
-    let unsubscribe: (() => void) | undefined;
-    let timeout: NodeJS.Timeout | undefined;
-
-    async function init() {
-      timeout = setTimeout(() => {
-        if (isMounted) setLoading(false);
-      }, 5000);
-
-      setIsProfileComplete(authProfileComplete);
-
-      try {
-        if (isMounted) setLoading(true);
-        unsubscribe = subscribeToDashboardSummary(businessId!, (data: any) => {
-          if (isMounted) {
-            setStats(data);
-            setLoading(false);
-            if (timeout) clearTimeout(timeout);
-          }
-        }, role || undefined, user?.uid);
-      } catch (err: any) {
-        console.error(err);
-        if (isMounted) {
-          setError("Connection issue. Please refresh.");
+    if (businessId) {
+       const unsubscribeStaff = subscribeToActiveStaff((staff) => {
+          setActiveStaff(staff);
+          // Filter by role and match location if available
+          setSuppliers(staff.filter(s => 
+            s.role === 'supplier' && 
+            (!userLocation || !s.location || s.location.toLowerCase() === userLocation.toLowerCase())
+          ));
+       });
+       
+       const unsubSummary = subscribeToDashboardSummary(businessId, (data) => {
+          setStats(data);
           setLoading(false);
-        }
-      }
+       }, role || '', user?.uid);
+       
+       return () => {
+         unsubscribeStaff();
+         unsubSummary();
+       };
     }
-
-    init();
-    
-    // Live staff subscription for doctors
-    let unsubscribeStaff: (() => void) | undefined;
-    if (role === 'doctor' && businessId) {
-      unsubscribeStaff = subscribeToActiveStaff((list: any[]) => {
-        if (isMounted) {
-          const assistants = list.filter((u: any) => u.id !== user?.uid && u.role === 'assistant');
-          setActiveStaff(assistants);
-        }
-      });
-    }
-
-    return () => {
-      isMounted = false;
-      if (unsubscribe) unsubscribe();
-      if (unsubscribeStaff) unsubscribeStaff();
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [user, authLoading, businessId, authProfileComplete, role]);
+  }, [user, authLoading, businessId, authProfileComplete, role, userLocation]);
 
   // Subscribe to patient history when modal opens
   useEffect(() => {
@@ -191,24 +165,18 @@ export default function Dashboard() {
   const handleLogStock = async () => {
     if (!businessId || !activePatient) return;
     setIsSubmitting(true);
-
-    const validEntries = stockEntries.filter(e => e.itemName && e.itemName.trim() !== '' && e.amount);
-    if (validEntries.length === 0) {
-      alert("Please enter at least one medicine item and quantity.");
-      setIsSubmitting(false);
-      return;
-    }
-
-    const patientName = activePatient.name || activePatient.customerName || activePatient.displayName || "Unknown Patient";
-
     try {
-      await logStockActions(businessId!, validEntries, patientName, activePatient.customerEmail || activePatient.email);
+      await logStockActions(
+        businessId!, 
+        stockEntries.map(e => ({...e, action: 'Stock Out', amount: Number(e.amount)})),
+        activePatient?.name || activePatient?.customerName || 'Patient',
+        activePatient?.email || activePatient?.customerEmail,
+        selectedSupplier
+      );
+      showSuccess("Medical resources logged successfully.");
       setStockEntries([{ itemName: '', duration: '', amount: '' }]);
-      setSuccessMsg("Stock logged successfully");
-      setTimeout(() => {
-        setSuccessMsg('');
-        setShowStockModal(false);
-      }, 2000);
+      setSelectedSupplier('');
+      setShowStockModal(false);
     } catch (err: any) {
       console.error("Stock log error:", err);
       alert(err.message || "Failed to log stock");
@@ -267,21 +235,25 @@ export default function Dashboard() {
 
   const handleInventoryUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!inventoryForm.itemName || !businessId) return;
     setIsSubmitting(true);
     try {
-      const existingItem = stats?.all_inventory?.find((i: any) => i.name.toLowerCase() === inventoryForm.itemName.toLowerCase());
-      const newQty = inventoryForm.type === 'add' 
-        ? (existingItem?.quantity || 0) + inventoryForm.quantity 
-        : Math.max(0, (existingItem?.quantity || 0) - inventoryForm.quantity);
-
-      await updateInventoryItem(businessId!, existingItem?.id || 'new_item', {
-        name: inventoryForm.itemName,
-        quantity: newQty,
-        threshold: existingItem?.threshold || 5
-      });
-      showSuccess("Inventory logs updated.");
+      await logStockActions(
+        businessId, 
+        [{
+          itemName: inventoryForm.itemName,
+          amount: inventoryForm.quantity,
+          action: inventoryForm.type === 'add' ? 'Stock In' : 'Stock Out'
+        }],
+        'Manual Log',
+        undefined,
+        selectedSupplier
+      );
+      showSuccess("Inventory level updated.");
+      setInventoryForm({ itemName: '', quantity: 0, type: 'add' });
+      setSelectedSupplier('');
     } catch (err) {
-      alert("Failed to update inventory");
+      alert("Update failed.");
     } finally {
       setIsSubmitting(false);
     }
@@ -687,6 +659,19 @@ export default function Dashboard() {
                                   />
                                 </div>
                               </div>
+                              <div className="space-y-1">
+                                <label className="text-xs text-white/50 uppercase font-bold px-1">Select Supplier (Optional)</label>
+                                <select 
+                                  className="glass-input bg-[#0f172a]"
+                                  value={selectedSupplier}
+                                  onChange={(e) => setSelectedSupplier(e.target.value)}
+                                >
+                                  <option value="">Direct Log</option>
+                                  {suppliers.map(s => (
+                                    <option key={s.id} value={s.id}>{s.displayName || s.email}</option>
+                                  ))}
+                                </select>
+                              </div>
                               <button 
                                 disabled={isSubmitting}
                                 className="w-full py-4 bg-primary-600 hover:bg-primary-500 rounded-xl font-bold transition-all mt-4"
@@ -828,6 +813,20 @@ export default function Dashboard() {
                         </div>
                       </div>
                     ))}
+
+                    <div className="p-4 bg-primary-500/10 border border-primary-500/20 rounded-2xl mb-4">
+                      <label className="text-[10px] text-primary-400 uppercase font-bold mb-2 block">Choose Supplier</label>
+                      <select 
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-primary-500 outline-none"
+                        value={selectedSupplier}
+                        onChange={(e) => setSelectedSupplier(e.target.value)}
+                      >
+                        <option value="">Direct Log (No Supplier)</option>
+                        {suppliers.map(s => (
+                          <option key={s.id} value={s.id}>{s.displayName || s.email}</option>
+                        ))}
+                      </select>
+                    </div>
 
                     <button onClick={addEntry} className="w-full py-3 border border-dashed border-white/20 text-white/40 rounded-xl hover:text-white hover:border-white/40 transition-all flex items-center justify-center gap-2 text-sm">
                       <Plus size={16} /> Add Another Item

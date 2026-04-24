@@ -9,20 +9,37 @@ import {
   TrendingUp,
   History,
   Plus,
-  Clock
+  Clock,
+  CheckCircle,
+  ShoppingBag
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { StatCard } from '../StatCard';
+import { acceptStockRequest } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 
 export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: () => void }) {
+  const { businessId, user } = useAuth();
   const displayStats = stats || {
     inventory_alerts: [],
-    all_inventory: []
+    all_inventory: [],
+    all_history: []
   };
 
-  const expiringItems = displayStats.all_inventory?.filter((item: any) => 
-    item.expiryDate && new Date(item.expiryDate).getTime() < (new Date().getTime() + 14 * 24 * 60 * 60 * 1000)
-  ) || [];
+  const pendingRequests = (displayStats.all_history || []).filter((log: any) => 
+    log.supplierId === user?.uid && log.status === 'pending'
+  );
+
+  const handleAcceptRequest = async (requestId: string) => {
+    if (!businessId) return;
+    try {
+      await acceptStockRequest(businessId, requestId);
+      alert("Request accepted and inventory updated.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to accept request.");
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -62,13 +79,63 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
         />
         <StatCard 
           title="Expiring Items" 
-          value={expiringItems.length} 
+          value={displayStats.all_inventory?.filter((item: any) => 
+            item.expiryDate && new Date(item.expiryDate).getTime() < (new Date().getTime() + 14 * 24 * 60 * 60 * 1000)
+          ).length} 
           subtitle="Expires within 14 days"
           icon={<Clock className="text-orange-400" />}
-          badge={expiringItems.length > 0 ? { label: 'Review', color: 'bg-orange-500/20 text-orange-400' } : undefined}
         />
 
       </div>
+
+      {pendingRequests.length > 0 && (
+        <div className="glass-card p-6 border-primary-500/30 bg-primary-500/5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <ShoppingBag size={80} />
+          </div>
+          <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+            <ShoppingBag className="text-primary-400" />
+            Incoming Supply Requests
+            <span className="bg-primary-500 text-white text-[10px] px-2 py-0.5 rounded-full">{pendingRequests.length}</span>
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {pendingRequests.map((request: any) => (
+              <motion.div 
+                key={request.id}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-black/40 border border-white/5 rounded-2xl p-5 hover:border-primary-500/50 transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <div className="text-xs text-white/30 uppercase font-bold tracking-tighter">Requested For</div>
+                      <div className="font-bold text-primary-400">{request.patientName}</div>
+                    </div>
+                    <div className="text-[10px] bg-white/5 px-2 py-1 rounded text-white/40">
+                      {request.createdAt?.seconds ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : 'Today'}
+                    </div>
+                  </div>
+                  <div className="space-y-2 mb-6">
+                    {request.items?.map((item: any, i: number) => (
+                      <div key={i} className="flex justify-between items-center text-sm bg-white/5 p-2 rounded-lg">
+                        <span className="text-white/80">{item.itemName}</span>
+                        <span className="font-mono font-bold text-primary-400">x{item.amount}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <button 
+                  onClick={() => handleAcceptRequest(request.id)}
+                  className="w-full py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
+                >
+                  <CheckCircle size={14} /> Accept & Dispatch
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 glass-card p-6">

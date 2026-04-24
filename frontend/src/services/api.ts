@@ -599,7 +599,7 @@ export async function updateInventoryItem(businessId: string, itemId: string, da
   }, { merge: true });
   return { status: 'success' };
 }
-export async function logStockActions(businessId: string, actions: any[], patientName: string, patientEmail?: string) {
+export async function logStockActions(businessId: string, actions: any[], patientName: string, patientEmail?: string, supplierId?: string) {
   if (!businessId) throw new Error("Missing Clinical Context (BusinessID)");
   if (!actions || actions.length === 0) return { status: 'skipped' };
 
@@ -643,11 +643,14 @@ export async function logStockActions(businessId: string, actions: any[], patien
       const adjustment = action.action === 'Stock In' ? amount : -amount;
       const newQty = Math.max(0, currentQty + adjustment);
 
-      await setDoc(itemRef, {
-        quantity: newQty,
-        lastPatient: patientName,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+      // Only update inventory immediately if NOT a supplier request
+      if (!supplierId) {
+        await setDoc(itemRef, {
+          quantity: newQty,
+          lastPatient: patientName,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
     }
 
     // 2. Save a permanent record of this "order" session
@@ -656,6 +659,8 @@ export async function logStockActions(businessId: string, actions: any[], patien
       patientName,
       patientEmail: patientEmail || null,
       assignedAssistantId: assistantId,
+      supplierId: supplierId || null,
+      status: supplierId ? 'pending' : 'completed', // If a supplier is selected, it's a request
       items: actions,
       createdAt: serverTimestamp()
     });
@@ -665,6 +670,44 @@ export async function logStockActions(businessId: string, actions: any[], patien
     console.error("Clinical Stock Log Failed:", error.message || error);
     throw new Error(`Critical: ${error.message || 'Database connection lost'}`);
   }
+}
+
+export async function acceptStockRequest(businessId: string, requestId: string) {
+  const requestRef = doc(db, 'businesses', businessId, 'stock_history', requestId);
+  const snap = await getDoc(requestRef);
+  
+  if (snap.exists()) {
+    const data = snap.data();
+    const actions = data.items || [];
+    
+    // Process the inventory updates now that it's accepted
+    for (const action of actions) {
+      const q = query(collection(db, 'businesses', businessId, 'inventory'), where("name", "==", action.itemName));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const itemDoc = querySnapshot.docs[0];
+        const itemRef = doc(db, 'businesses', businessId, 'inventory', itemDoc.id);
+        const currentQty = itemDoc.data().quantity || 0;
+        const amount = Number(action.amount) || 0;
+        const adjustment = action.action === 'Stock In' ? amount : -amount;
+        const newQty = Math.max(0, currentQty + adjustment);
+        
+        await setDoc(itemRef, {
+          quantity: newQty,
+          lastPatient: data.patientName,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
+    }
+
+    await setDoc(requestRef, {
+      status: 'completed',
+      acceptedAt: serverTimestamp()
+    }, { merge: true });
+  }
+  
+  return { status: 'success' };
 }
 
 export function subscribeToPatientHistory(businessId: string, patientName: string, callback: (logs: any[]) => void) {

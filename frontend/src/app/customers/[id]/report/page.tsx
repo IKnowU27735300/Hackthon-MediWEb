@@ -26,7 +26,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { subscribeToActiveStaff, logStockActions } from '@/services/api';
 
 export default function PatientReportPage() {
-  const { user, role, businessId, loading: authLoading } = useAuth();
+  const { user, role, businessId, location: userLocation, loading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
   const patientId = params.id as string;
@@ -46,6 +46,8 @@ export default function PatientReportPage() {
   const [stockEntries, setStockEntries] = useState([{ itemName: '', amount: 1 }]);
   const [isLoggingStock, setIsLoggingStock] = useState(false);
   const [stockStatus, setStockStatus] = useState('');
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [selectedSupplier, setSelectedSupplier] = useState<string>('');
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -55,14 +57,20 @@ export default function PatientReportPage() {
 
   // Fetch Assistants (Active status included via real-time listener)
   useEffect(() => {
-    if (role === 'doctor' && businessId) {
-       const unsubscribe = subscribeToActiveStaff((staff) => {
-          const assistantsList = staff.filter(s => s.role === 'assistant' && (s.businessId === user?.uid || !s.businessId || s.businessId === businessId));
-          setAssistants(assistantsList);
-       });
-       return () => unsubscribe();
-    }
-  }, [user, role, businessId]);
+     if (role === 'doctor' && businessId) {
+        const unsubscribe = subscribeToActiveStaff((staff) => {
+           const assistantsList = staff.filter(s => s.role === 'assistant' && (s.businessId === user?.uid || !s.businessId || s.businessId === businessId));
+           setAssistants(assistantsList);
+           
+           const suppliersList = staff.filter(s => 
+             s.role === 'supplier' && 
+             (!userLocation || !s.location || s.location.toLowerCase() === userLocation.toLowerCase())
+           );
+           setSuppliers(suppliersList);
+        });
+        return () => unsubscribe();
+     }
+  }, [user, role, businessId, userLocation]);
 
   useEffect(() => {
     async function fetchData() {
@@ -126,10 +134,12 @@ export default function PatientReportPage() {
           businessId, 
           validEntries.map(e => ({...e, action: 'Stock Out', amount: Number(e.amount)})),
           patient?.name || 'Patient',
-          patient?.email
+          patient?.email,
+          selectedSupplier
       );
-      setStockStatus('Logged successfully');
+      setStockStatus('Request sent successfully');
       setStockEntries([{ itemName: '', amount: 1 }]);
+      setSelectedSupplier('');
       setTimeout(() => setStockStatus(''), 3000);
     } catch (err) {
       console.error(err);
@@ -311,6 +321,22 @@ export default function PatientReportPage() {
                         <Package size={18} className="text-emerald-400" />
                         Medical Resources
                     </h3>
+
+                    {role === 'doctor' && (
+                        <div className="mb-6">
+                            <label className="text-[10px] uppercase font-bold text-white/30 tracking-widest block mb-2">Select Supplier</label>
+                            <select 
+                                value={selectedSupplier}
+                                onChange={(e) => setSelectedSupplier(e.target.value)}
+                                className="w-full glass-input bg-black/40 text-sm py-2"
+                            >
+                                <option value="">Direct Log (No Supplier)</option>
+                                {suppliers.map(s => (
+                                    <option key={s.id} value={s.id}>{s.displayName || s.email}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                     
                     {role === 'doctor' || role === 'assistant' ? (
                         <div className="space-y-4">
