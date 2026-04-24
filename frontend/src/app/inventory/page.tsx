@@ -425,7 +425,9 @@ export default function InventoryPage() {
                    </thead>
                    <tbody className="divide-y divide-white/5">
                       {data?.all_history && data.all_history.length > 0 ? (
-                        [...data.all_history].sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).map((log: any) => (
+                        [...data.all_history]
+                          .filter((log: any) => role !== 'assistant' || log.status === 'completed' || !log.status)
+                          .sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).map((log: any) => (
                           <tr key={log.id} className="hover:bg-white/5 transition-all group">
                             <td className="p-4 flex flex-col items-start gap-1">
                                <span className="text-xs font-mono font-bold">{log.createdAt?.seconds ? new Date(log.createdAt.seconds * 1000).toLocaleDateString() : 'Recent'}</span>
@@ -450,10 +452,17 @@ export default function InventoryPage() {
                                </div>
                             </td>
                             <td className="p-4">
-                               <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-widest border border-emerald-500/20">
-                                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                  Synced to Portal
-                               </div>
+                               {log.status === 'pending' ? (
+                                  <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-[10px] font-bold uppercase tracking-widest border border-amber-500/20">
+                                     <div className="w-1.5 h-1.5 bg-amber-500 rounded-full shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse" />
+                                     Pending Supplier
+                                  </div>
+                               ) : (
+                                  <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-widest border border-emerald-500/20">
+                                     <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                     {log.supplierId ? 'Order Fulfilled' : 'Synced to Portal'}
+                                  </div>
+                               )}
                             </td>
                           </tr>
                         ))
