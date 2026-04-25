@@ -15,8 +15,9 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { StatCard } from '../StatCard';
-import { acceptStockRequest } from '@/services/api';
+import { acceptStockRequest, rejectStockRequest } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
+import { AnimatePresence } from 'framer-motion';
 
 export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: () => void }) {
   const { businessId, user } = useAuth();
@@ -41,8 +42,58 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
     }
   };
 
+  const handleRejectRequest = async (requestId: string) => {
+    if (!businessId) return;
+    try {
+      await rejectStockRequest(businessId, requestId);
+      alert("Request rejected.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to reject request.");
+    }
+  };
+
+  // Popup notification logic
+  const [showPopup, setShowPopup] = React.useState(false);
+  const [latestRequest, setLatestRequest] = React.useState<any>(null);
+  const prevPendingLength = React.useRef(pendingRequests.length);
+
+  React.useEffect(() => {
+    if (pendingRequests.length > prevPendingLength.current) {
+      // New request came in
+      const newest = pendingRequests[0]; // Assuming sorted by newest first or just grabbing one
+      setLatestRequest(newest);
+      setShowPopup(true);
+      // Auto-hide after 5 seconds
+      const t = setTimeout(() => setShowPopup(false), 5000);
+      return () => clearTimeout(t);
+    }
+    prevPendingLength.current = pendingRequests.length;
+  }, [pendingRequests.length]);
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
+      <AnimatePresence>
+        {showPopup && latestRequest && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: -20, x: '-50%' }}
+            className="fixed top-10 left-1/2 z-[100] bg-primary-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-primary-400/30"
+          >
+            <div className="bg-white/20 p-2 rounded-full">
+              <AlertTriangle size={24} />
+            </div>
+            <div>
+              <h4 className="font-bold">New Prescription & Supply Request</h4>
+              <p className="text-sm opacity-80">Doctor prescribed medications for {latestRequest.patientName}</p>
+            </div>
+            <button onClick={() => setShowPopup(false)} className="ml-4 opacity-50 hover:opacity-100">
+              <Plus size={20} className="rotate-45" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <header className="flex justify-between items-center mb-10">
         <div>
           <h1 className="text-3xl font-bold mb-2 text-amber-500">Inventory Command</h1>
@@ -116,7 +167,7 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
                       {request.createdAt?.seconds ? new Date(request.createdAt.seconds * 1000).toLocaleDateString() : 'Today'}
                     </div>
                   </div>
-                  <div className="space-y-2 mb-6">
+                  <div className="space-y-2 mb-4">
                     {request.items?.map((item: any, i: number) => (
                       <div key={i} className="flex justify-between items-center text-sm bg-white/5 p-2 rounded-lg">
                         <span className="text-white/80">{item.itemName}</span>
@@ -124,13 +175,27 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
                       </div>
                     ))}
                   </div>
+                  {request.prescriptionNotes && (
+                    <div className="mb-6 p-3 bg-white/5 rounded-lg border border-white/10">
+                      <div className="text-[10px] text-white/30 uppercase font-bold mb-1">Clinical Notes</div>
+                      <div className="text-xs text-white/70 italic">{request.prescriptionNotes}</div>
+                    </div>
+                  )}
                 </div>
-                <button 
-                  onClick={() => handleAcceptRequest(request.id)}
-                  className="w-full py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
-                >
-                  <CheckCircle size={14} /> Accept & Dispatch
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => handleRejectRequest(request.id)}
+                    className="w-1/3 py-2.5 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1 border border-red-500/30"
+                  >
+                    Reject
+                  </button>
+                  <button 
+                    onClick={() => handleAcceptRequest(request.id)}
+                    className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle size={14} /> Accept & Dispatch
+                  </button>
+                </div>
               </motion.div>
             ))}
           </div>

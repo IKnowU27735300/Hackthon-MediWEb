@@ -10,7 +10,8 @@ import {
   serverTimestamp,
   Timestamp,
   onSnapshot,
-  deleteDoc
+  deleteDoc,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -599,7 +600,7 @@ export async function updateInventoryItem(businessId: string, itemId: string, da
   }, { merge: true });
   return { status: 'success' };
 }
-export async function logStockActions(businessId: string, actions: any[], patientName: string, patientEmail?: string, supplierId?: string) {
+export async function logStockActions(businessId: string, actions: any[], patientName: string, patientEmail?: string, supplierId?: string, prescriptionNotes?: string) {
   if (!businessId) throw new Error("Missing Clinical Context (BusinessID)");
   if (!actions || actions.length === 0) return { status: 'skipped' };
 
@@ -662,6 +663,7 @@ export async function logStockActions(businessId: string, actions: any[], patien
       supplierId: supplierId || null,
       status: supplierId ? 'pending' : 'completed', // If a supplier is selected, it's a request
       items: actions,
+      prescriptionNotes: prescriptionNotes || null,
       createdAt: serverTimestamp()
     });
 
@@ -670,6 +672,14 @@ export async function logStockActions(businessId: string, actions: any[], patien
     console.error("Clinical Stock Log Failed:", error.message || error);
     throw new Error(`Critical: ${error.message || 'Database connection lost'}`);
   }
+}
+
+export async function rejectStockRequest(businessId: string, requestId: string) {
+  const requestRef = doc(db, 'businesses', businessId, 'stock_history', requestId);
+  await updateDoc(requestRef, {
+    status: 'rejected',
+    updatedAt: serverTimestamp()
+  });
 }
 
 export async function acceptStockRequest(businessId: string, requestId: string) {

@@ -73,6 +73,7 @@ export default function Dashboard() {
   // Repeat Patient Detection
   const [repeatPatientInfo, setRepeatPatientInfo] = useState<any>(null);
   const [repeatHistory, setRepeatHistory] = useState<any>(null);
+  const [prescriptionNotes, setPrescriptionNotes] = useState('');
   const [fetchingRepeat, setFetchingRepeat] = useState(false);
 
   // Greeting logic
@@ -171,11 +172,13 @@ export default function Dashboard() {
         stockEntries.map(e => ({...e, action: 'Stock Out', amount: Number(e.amount)})),
         activePatient?.name || activePatient?.customerName || 'Patient',
         activePatient?.email || activePatient?.customerEmail,
-        selectedSupplier
+        selectedSupplier,
+        prescriptionNotes
       );
       showSuccess("Medical resources logged successfully.");
       setStockEntries([{ itemName: '', duration: '', amount: '' }]);
       setSelectedSupplier('');
+      setPrescriptionNotes('');
       setShowStockModal(false);
     } catch (err: any) {
       console.error("Stock log error:", err);
@@ -828,9 +831,20 @@ export default function Dashboard() {
                       </select>
                     </div>
 
-                    <button onClick={addEntry} className="w-full py-3 border border-dashed border-white/20 text-white/40 rounded-xl hover:text-white hover:border-white/40 transition-all flex items-center justify-center gap-2 text-sm">
+                    <button onClick={addEntry} className="w-full py-3 border border-dashed border-white/20 text-white/40 rounded-xl hover:text-white hover:border-white/40 transition-all flex items-center justify-center gap-2 text-sm mb-4">
                       <Plus size={16} /> Add Another Item
                     </button>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-white/30 uppercase font-bold px-1">Prescription / Clinical Notes</label>
+                      <textarea 
+                        rows={3}
+                        value={prescriptionNotes}
+                        onChange={(e) => setPrescriptionNotes(e.target.value)}
+                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-primary-500 outline-none resize-none"
+                        placeholder="Add doctor's notes or prescription details here..."
+                      />
+                    </div>
                   </div>
 
                   {/* Right: History */}
