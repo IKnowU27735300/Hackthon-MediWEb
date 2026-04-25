@@ -131,7 +131,7 @@ export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
         <div className="space-y-6">
           <div className="glass-card p-6 border-emerald-500/20 bg-emerald-500/5">
             <h3 className="text-lg font-bold mb-4">Clinical Scribe Status</h3>
-            <p className="text-sm text-white/60 mb-6">Your assistant profile is active in the clinical network.</p>
+            <p className="text-sm text-white/60 mb-6">{user?.displayName || 'Your'} profile is active in the clinical network.</p>
             <div className="space-y-4">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-white/40 uppercase tracking-widest font-bold">Visibility</span>

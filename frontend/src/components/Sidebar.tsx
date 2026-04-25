@@ -133,7 +133,7 @@ export function Sidebar() {
             <div className="text-sm font-bold truncate">{displayName || user?.displayName || 'Healthcare User'}</div>
             <div className="text-[10px] text-muted truncate uppercase tracking-widest flex items-center gap-1">
               <span className={`inline-block w-1.5 h-1.5 rounded-full ${role === 'doctor' ? 'bg-indigo-500' : role === 'assistant' ? 'bg-emerald-500' : 'bg-orange-500'}`} />
-              {role || 'Staff'}
+              {{ doctor: 'Doctor', assistant: 'Clinical Assistant', supplier: 'Supplier' }[role!] || 'Staff'}
             </div>
           </div>
         </div>
