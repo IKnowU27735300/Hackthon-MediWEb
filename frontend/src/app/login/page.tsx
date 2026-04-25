@@ -79,13 +79,25 @@ export default function LoginPage() {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const accessToken = credential?.accessToken;
 
-      await setDoc(doc(db, 'businesses', result.user.uid), {
-        role: selectedRole,
-        googleAccountEmail: result.user.email,
-        googleAccessToken: accessToken,
-        updatedAt: new Date()
-      }, { merge: true });
-      router.push('/dashboard');
+      // CHECK IF PROFILE EXISTS
+      const profileRef = doc(db, 'businesses', result.user.uid);
+      const profileSnap = await getDoc(profileRef);
+
+      if (profileSnap.exists()) {
+        // User already has a profile, just update the token and proceed
+        await setDoc(profileRef, {
+          googleAccountEmail: result.user.email,
+          googleAccessToken: accessToken,
+          updatedAt: new Date()
+        }, { merge: true });
+        router.push('/dashboard');
+      } else {
+        // User DOES NOT exist - Redirect to registration (Signup Modal)
+        // We stop loading so they can see the modal
+        setError("Account not found. Please complete the registration details below to create your clinical profile.");
+        setLoading(false);
+        setShowSignupModal(true);
+      }
     } catch (err: any) {
       console.error("Google Login Error:", err);
       setError(err.message || "Failed to login with Google.");

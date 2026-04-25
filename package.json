@@ -3,5 +3,8 @@
   "version": "1.0.0",
   "scripts": {
     "start": "python3 run_app.py"
+  },
+  "dependencies": {
+    "firebase-tools": "^15.15.0"
   }
 }

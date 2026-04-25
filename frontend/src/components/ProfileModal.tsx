@@ -33,16 +33,28 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
     location: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    role: (role || 'doctor') as 'doctor' | 'assistant' | 'supplier'
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const isSocialSignup = !!auth.currentUser && isSignup;
+
+  // Sync email if social signup
+  React.useEffect(() => {
+    if (isSocialSignup && auth.currentUser?.email) {
+      setFormData(prev => ({ ...prev, email: auth.currentUser?.email || '' }));
+    }
+  }, [isSocialSignup]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (formData.password !== formData.confirmPassword) {
+    const isSocialSignup = auth.currentUser && isSignup;
+
+    if (!isSocialSignup && isSignup && formData.password !== formData.confirmPassword) {
       setError("Passwords do not match. Please verify.");
       return;
     }
@@ -50,18 +62,24 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
     setIsSubmitting(true);
     try {
       if (isSignup) {
-        // Step 1: Create Firebase Auth User
-        const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-        const uid = userCredential.user.uid;
+        let uid = auth.currentUser?.uid;
+        let email = formData.email || auth.currentUser?.email;
+
+        if (!uid) {
+          // Step 1: Create Firebase Auth User (Email/Password Flow)
+          const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+          uid = userCredential.user.uid;
+          email = formData.email;
+        }
 
         // Step 2: Initialize Business Profile with selected role
         await setDoc(doc(db, 'businesses', uid), {
-          role: role,
+          role: formData.role,
           displayName: formData.publicName,
           // Only save phone/location if relevant for role
-          ...(role === 'doctor' && { businessPhone: formData.phone, location: formData.location }),
-          ...(role === 'supplier' && { location: formData.location }),
-          email: formData.email,
+          ...(formData.role === 'doctor' && { businessPhone: formData.phone, location: formData.location }),
+          ...(formData.role === 'supplier' && { location: formData.location }),
+          email: email,
           profileCompleted: true,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
@@ -83,18 +101,18 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
 
   const getTitle = () => {
     if (isSignup) {
-      if (role === 'doctor') return "Create Doctor Account";
-      if (role === 'assistant') return "Create Clinical Team Account";
-      if (role === 'supplier') return "Create Supplier Account";
+      if (formData.role === 'doctor') return "Create Doctor Account";
+      if (formData.role === 'assistant') return "Create Clinical Team Account";
+      if (formData.role === 'supplier') return "Create Supplier Account";
     }
     return "Complete Profile";
   };
 
   const getSubtitle = () => {
     if (isSignup) {
-      if (role === 'doctor') return "Register your practice on the MediWeb network";
-      if (role === 'assistant') return "Join the clinical team";
-      if (role === 'supplier') return "Register as an authorized supplier";
+      if (formData.role === 'doctor') return "Register your practice on the MediWeb network";
+      if (formData.role === 'assistant') return "Join the clinical team";
+      if (formData.role === 'supplier') return "Register as an authorized supplier";
     }
     return "These details will be visible on your profile";
   };
@@ -128,6 +146,28 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {isSignup && (
+            <div className="space-y-2 mb-6">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">Identity Selection</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['doctor', 'assistant', 'supplier'] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, role: r }))}
+                    className={`py-2 px-1 rounded-xl border text-[10px] font-bold uppercase tracking-tighter transition-all ${
+                      formData.role === r 
+                        ? 'bg-primary-600 border-primary-500 text-white shadow-lg shadow-primary-900/20' 
+                        : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+                    }`}
+                  >
+                    {r === 'assistant' ? 'Assistant' : r.charAt(0).toUpperCase() + r.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-center gap-2 mb-2">
               <AlertCircle size={14} />
@@ -135,10 +175,10 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
             </div>
           )}
 
-          <div className={`grid ${role === 'doctor' ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
+          <div className={`grid ${formData.role === 'doctor' ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">
-                 {role === 'doctor' ? 'Clinic Name' : 'Full Name'}
+                 {formData.role === 'doctor' ? 'Clinic Name' : 'Full Name'}
               </label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
@@ -151,13 +191,13 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
               </div>
             </div>
 
-            {role === 'doctor' && (
+            {formData.role === 'doctor' && (
               <div className="space-y-1">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">Public Phone</label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 text-xs font-mono">+91</span>
                   <input 
-                    required={role === 'doctor'}
+                    required={formData.role === 'doctor'}
                     type="tel"
                     maxLength={10}
                     value={formData.phone}
@@ -173,62 +213,66 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
             )}
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">
-               {role === 'doctor' ? 'Clinic Email Address' : 'Email Address'}
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
-              <input 
-                required
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-                placeholder="email@example.com"
-                className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-primary-500 transition-all text-xs"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
-                <input 
-                  required
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  placeholder="Password"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-primary-500 transition-all text-xs"
-                />
+          {!isSocialSignup && (
+            <>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">
+                  {formData.role === 'doctor' ? 'Clinic Email Address' : 'Email Address'}
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                  <input 
+                    required
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    placeholder="email@example.com"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-primary-500 transition-all text-xs"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">Confirm</label>
-              <div className="relative">
-                <Lock 
-                  className={`absolute left-4 top-1/2 -translate-y-1/2 ${formData.confirmPassword && formData.password === formData.confirmPassword ? 'text-emerald-500' : 'text-white/20'}`} 
-                  size={16} 
-                />
-                <input 
-                  required
-                  type="password"
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                  placeholder="Password"
-                  className={`w-full bg-white/5 border rounded-xl pl-10 pr-4 py-3 focus:outline-none transition-all text-xs ${formData.confirmPassword && formData.password !== formData.confirmPassword ? 'border-red-500/50' : 'border-white/10 focus:border-primary-500'}`}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                    <input 
+                      required
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({...formData, password: e.target.value})}
+                      placeholder="Password"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-primary-500 transition-all text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">Confirm</label>
+                  <div className="relative">
+                    <Lock 
+                      className={`absolute left-4 top-1/2 -translate-y-1/2 ${formData.confirmPassword && formData.password === formData.confirmPassword ? 'text-emerald-500' : 'text-white/20'}`} 
+                      size={16} 
+                    />
+                    <input 
+                      required
+                      type="password"
+                      value={formData.confirmPassword}
+                      onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                      placeholder="Password"
+                      className={`w-full bg-white/5 border rounded-xl pl-10 pr-4 py-3 focus:outline-none transition-all text-xs ${formData.confirmPassword && formData.password !== formData.confirmPassword ? 'border-red-500/50' : 'border-white/10 focus:border-primary-500'}`}
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          )}
           
-          {(role === 'doctor' || role === 'supplier') && (
+          {(formData.role === 'doctor' || formData.role === 'supplier') && (
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">
-                 {role === 'doctor' ? 'Clinic Location' : 'Supplier Location'}
+                 {formData.role === 'doctor' ? 'Clinic Location' : 'Supplier Location'}
               </label>
               <div className="relative">
                 <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
@@ -250,7 +294,7 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
           >
             {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : (
               <>
-                {isSignup ? `Create ${role.charAt(0).toUpperCase() + role.slice(1)} Account` : "Save Changes"}
+                {isSignup ? `Create ${formData.role.charAt(0).toUpperCase() + formData.role.slice(1)} Account` : "Save Changes"}
                 <ArrowRight size={18} />
               </>
             )}

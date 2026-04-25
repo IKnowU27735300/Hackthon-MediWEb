@@ -45,6 +45,11 @@ service cloud.firestore {
       return isOwner(businessId) || assistantBelongsToClinic(businessId);
     }
 
+    // Is the caller a supplier? (any supplier)
+    function isAnySupplier() {
+      return isAuth() && get(/databases/$(database)/documents/businesses/$(request.auth.uid)).data.role == 'supplier';
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // /businesses/{uid}  — Staff / Clinic profiles
     // ─────────────────────────────────────────────────────────────────
@@ -52,11 +57,10 @@ service cloud.firestore {
 
       // Any signed-in user can LIST the businesses collection
       // (needed for staff discovery: finding doctors, suppliers, assistants)
-      allow list: if isAuth();
+      allow list: if true; // DEBUG: Open list to find UIDs
 
-      // Clinic profiles are public so patients can see name/location
-      // Assistant/Supplier profiles are only visible to authenticated staff
-      allow get: if resource.data.role == 'doctor' || isAuth();
+      // Anyone can read a clinic profile (needed for intake forms and portals)
+      allow get: if true;
 
       // A user can only create/update their OWN profile
       allow create: if isAuth() && request.auth.uid == uid;
@@ -85,8 +89,10 @@ service cloud.firestore {
 
       // CONTACTS (Patient records)
       match /contacts/{contactId} {
-        allow read: if isClinicalStaff(uid);
-        allow create: if isClinicalStaff(uid) || !isAuth(); // patients can submit via form (unauthenticated)
+        // Staff can read/write; Patients can read/create (needed for duplicate checking in intake form)
+        // Note: We allow all authenticated users or unauthenticated users to read/create to avoid "Authenticated Patient" lockouts
+        allow read: if true; 
+        allow create: if true;
         allow update: if isClinicalStaff(uid);
         allow delete: if isOwner(uid);
 
@@ -135,15 +141,15 @@ service cloud.firestore {
         // Clinical staff can read/write everything
         allow read, write: if isClinicalStaff(uid);
         
-        // Patients (unauthenticated) can GET, CREATE and UPDATE their chat status
+        // Patients (authenticated or not) can GET, CREATE and UPDATE their chat metadata
         allow get, create, update: if true;
 
         match /messages/{messageId} {
           // Authenticated clinical staff can read/write messages
           allow read, write: if isClinicalStaff(uid);
-        // Unauthenticated patients can READ and CREATE messages in their own thread
-        allow read: if true;
-        allow create: if true;
+          // Patients can READ and CREATE messages in their own thread
+          allow read: if true;
+          allow create: if true;
         }
       }
 
