@@ -452,12 +452,14 @@ export default function PatientReportPage() {
                           >
                               <div className="relative">
                                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-600 to-indigo-600 flex items-center justify-center font-bold text-sm text-white shadow-lg">
-                                    {(assistant.displayName?.[0] || assistant.name?.[0] || assistant.email?.[0] || 'A').toUpperCase()}
+                                    {(assistant.businessName?.[0] || assistant.displayName?.[0] || assistant.name?.[0] || assistant.email?.[0] || 'A').toUpperCase()}
                                   </div>
                                   <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-black ${isOnline ? 'bg-emerald-500' : 'bg-white/20'}`}></div>
                               </div>
                               <div className="flex-1">
-                                <div className="font-bold text-sm group-hover:text-primary-300 transition-colors">{assistant.displayName || assistant.name || assistant.email?.split('@')[0] || 'Assistant'}</div>
+                                <div className="font-bold text-sm group-hover:text-primary-300 transition-colors">
+                                  {assistant.businessName || assistant.displayName || assistant.name || assistant.email?.split('@')[0] || 'Assistant'}
+                                </div>
                                 <div className={`text-[10px] uppercase font-bold ${isOnline ? 'text-emerald-400' : 'text-white/20'}`}>
                                 {isOnline ? 'Online Now' : 'Offline'}
                               </div>
