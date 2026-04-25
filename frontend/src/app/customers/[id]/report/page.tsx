@@ -333,7 +333,9 @@ export default function PatientReportPage() {
                             >
                                 <option value="">Direct Log (No Supplier)</option>
                                 {suppliers.map(s => (
-                                    <option key={s.id} value={s.id}>{s.displayName || s.email}</option>
+                                    <option key={s.id} value={s.id}>
+                                      {s.businessName || s.displayName || s.googleAccountEmail || s.email || 'Unnamed Supplier'}
+                                    </option>
                                 ))}
                             </select>
                         </div>

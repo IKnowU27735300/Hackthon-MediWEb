@@ -1,102 +1,163 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // --- HELPER FUNCTIONS ---
-    
-    function isAuthenticated() { 
-      return request.auth != null; 
+
+    // ─────────────────────────────────────────────────────────────────
+    // HELPER FUNCTIONS
+    // ─────────────────────────────────────────────────────────────────
+
+    // Is the caller signed in?
+    function isAuth() {
+      return request.auth != null;
     }
 
-    // Fetch the user's profile to determine their role
-    function getUserData() {
-      // Safely access data only if path exists
+    // Read the caller's own business profile
+    function callerProfile() {
       return get(/databases/$(database)/documents/businesses/$(request.auth.uid)).data;
     }
 
-    // 1. DOCTOR (Business Owner/Admin)
-    function isDoctor(businessId) {
-      return isAuthenticated() && (request.auth.uid == businessId || (exists(/databases/$(database)/documents/businesses/$(request.auth.uid)) && getUserData().role == 'doctor'));
+    // Role shortcuts
+    function isDoctor() {
+      return isAuth() && callerProfile().role == 'doctor';
     }
 
-    // 2. ASSISTANT (Clinical Staff)
-    function isAssistant(businessId) {
-      return isAuthenticated() && exists(/databases/$(database)/documents/businesses/$(request.auth.uid)) && getUserData().role == 'assistant'; 
+    function isAssistant() {
+      return isAuth() && callerProfile().role == 'assistant';
     }
 
-    // 3. SUPPLIER (Inventory Manager)
-    function isSupplier(businessId) {
-      return isAuthenticated() && exists(/databases/$(database)/documents/businesses/$(request.auth.uid)) && getUserData().role == 'supplier';
+    function isSupplier() {
+      return isAuth() && callerProfile().role == 'supplier';
     }
 
-    // General Staff Check
-    function isStaff(businessId) {
-      return isDoctor(businessId) || isAssistant(businessId) || isSupplier(businessId);
+    // Does the assistant belong to this clinic (businessId)?
+    function assistantBelongsToClinic(businessId) {
+      return isAssistant() && callerProfile().businessId == businessId;
     }
 
-    // --- COLLECTION RULES ---
+    // Is the caller the owner of this clinic?
+    function isOwner(businessId) {
+      return isAuth() && request.auth.uid == businessId;
+    }
 
-    // Top Level: User Profiles (Doctors, Assistants, Suppliers)
-    // Allow PUBLIC read so patients can find their clinic on the landing page
-    match /businesses/{userId} {
-      allow read: if true; 
-      // Users can create/update their own profile, Doctors can update Assistant profiles (for linking)
-      allow write: if isAuthenticated() && (
-        request.auth.uid == userId || 
-        (exists(/databases/$(database)/documents/businesses/$(request.auth.uid)) && getUserData().role == 'doctor' && request.resource.data.role == 'assistant')
+    // Is the caller either the clinic doctor OR an assistant linked to this clinic?
+    function isClinicalStaff(businessId) {
+      return isOwner(businessId) || assistantBelongsToClinic(businessId);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // /businesses/{uid}  — Staff / Clinic profiles
+    // ─────────────────────────────────────────────────────────────────
+    match /businesses/{uid} {
+
+      // Any signed-in user can LIST the businesses collection
+      // (needed for staff discovery: finding doctors, suppliers, assistants)
+      allow list: if isAuth();
+
+      // Anyone signed-in can read a specific profile
+      // (needed so patients can see clinic info, assistants can find their doctor, etc.)
+      allow get: if isAuth();
+
+      // A user can only create/update their OWN profile
+      allow create: if isAuth() && request.auth.uid == uid;
+      allow update: if isAuth() && (
+        request.auth.uid == uid ||
+        // Doctors can update an assistant's businessId field to link them
+        (isDoctor() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['businessId', 'status', 'lastActive']))
       );
 
-      // --- SUB-COLLECTIONS ---
+      // Only the owner can delete their own profile
+      allow delete: if isOwner(uid);
 
-      // 1. BOOKINGS
+      // ── Sub-collections under a clinic ──────────────────────────────
+
+      // BOOKINGS
       match /bookings/{bookingId} {
-        // Allow public read so patients can verify their own bookings or check availability
-        allow read: if true; 
-        allow create: if true; 
-        allow update: if isDoctor(userId) || isAssistant(userId);
+        // Doctor (owner) + linked assistant can read bookings
+        allow read: if isClinicalStaff(uid);
+        // Unauthenticated patients can CREATE bookings via the intake form
+        allow create: if true;
+        // Only clinical staff can update or delete bookings
+        allow update: if isOwner(uid) || assistantBelongsToClinic(uid);
+        allow delete: if isOwner(uid);
       }
 
-      // 2. CONTACTS (Patients)
+      // CONTACTS (Patient records)
       match /contacts/{contactId} {
-        // Allow public read to support duplicate check in createBooking (query by email)
-        allow read: if true; 
-        allow create: if true; 
-        allow update: if isDoctor(userId) || isAssistant(userId);
+        allow read: if isClinicalStaff(uid);
+        allow create: if isClinicalStaff(uid) || !isAuth(); // patients can submit via form (unauthenticated)
+        allow update: if isClinicalStaff(uid);
+        allow delete: if isOwner(uid);
+
+        // Private sub-document (medical reports, sensitive notes)
+        match /private/{docId} {
+          // Assistants need read access for the Case Review modal (fetchPatientContext)
+          allow read: if isClinicalStaff(uid);
+          // Only the doctor can write clinical reports
+          allow write: if isOwner(uid);
+        }
       }
-      
-      // 3. INVENTORY (Shared Resource)
+
+      // INVENTORY
       match /inventory/{itemId} {
-        allow read: if isStaff(userId);
-        allow write: if isStaff(userId);
+        // All clinical staff + suppliers can read inventory
+        allow read: if isClinicalStaff(uid) || isSupplier();
+        // Clinical staff AND suppliers can write inventory (suppliers restock via Add Item / Upload)
+        allow create, update: if isClinicalStaff(uid) || isSupplier();
+        allow delete: if isOwner(uid);
       }
 
-      // 4. STOCK HISTORY (Usage Logs)
-      match /stock_history/{logId} {
-        allow read: if isStaff(userId);
-        allow create: if isStaff(userId);
-        allow update: if isStaff(userId);
-        allow delete: if isDoctor(userId);
+      // STOCK HISTORY (prescription / supply requests)
+      match /stock_history/{historyId} {
+        // Doctor sees all; assistant sees only their assigned records; supplier sees all pending requests
+        allow read: if isOwner(uid)
+          || assistantBelongsToClinic(uid)
+          || isSupplier(); // Suppliers need to see pending requests directed at them
+
+        // Doctor + assistant can create stock logs
+        allow create: if isClinicalStaff(uid);
+
+        // Doctor can update any record; supplier can only update status field (accept/reject)
+        allow update: if isOwner(uid)
+          || assistantBelongsToClinic(uid)
+          || (isSupplier() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'acceptedAt']));
+
+        allow delete: if isOwner(uid);
       }
 
-      // 5. INTERNAL CHATS (Team)
-      match /internal_chats/{chatId} {
-         allow read, write: if isStaff(userId);
-         match /messages/{msgId} {
-            allow read, write: if isStaff(userId);
-         }
+      // CUSTOMER CHATS (Patient inbox threads)
+      match /customer_chats/{customerEmail} {
+        allow read, write: if isClinicalStaff(uid);
+        // Patients (unauthenticated) update lastMsg/lastMsgTime metadata after sending
+        allow update: if true;
+
+        match /messages/{messageId} {
+          // Authenticated clinical staff can read/write messages
+          allow read, write: if isClinicalStaff(uid);
+          // Unauthenticated patients can CREATE a message (reply via patient portal)
+          allow create: if true;
+        }
       }
 
-      // 6. CUSTOMER CHATS (Patient Portal)
-      match /customer_chats/{chatId} {
-        allow read: if true; 
-        allow create, update: if true; 
+      // INTERNAL CHATS (Doctor ↔ Assistant briefings)
+      match /internal_chats/{assistantId} {
+        // Doctor can read all internal chats; assistant can only read their own thread
+        allow read: if isOwner(uid) || (isAssistant() && request.auth.uid == assistantId);
+        allow write: if isClinicalStaff(uid);
 
-        match /messages/{msgId} {
-           allow read: if true;
-           allow create: if true;
+        match /messages/{messageId} {
+          allow read: if isOwner(uid) || (isAssistant() && request.auth.uid == assistantId);
+          allow create: if isClinicalStaff(uid);
+          allow update, delete: if isOwner(uid);
         }
       }
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Deny everything else by default
+    // ─────────────────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }
-

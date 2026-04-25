@@ -39,8 +39,11 @@ export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
     <div className="space-y-8">
       <header className="flex justify-between items-center mb-10">
         <div>
-          <h1 className="text-3xl font-bold mb-2 text-emerald-400">Assistant Hub</h1>
-          <p className="text-white/50">Clinical support and medical record reviews.</p>
+          <h1 className="text-3xl font-bold mb-1 text-emerald-400">
+            {user?.displayName || user?.email?.split('@')[0] || 'Assistant'} 
+          </h1>
+          <p className="text-xs text-white/30 uppercase tracking-widest font-bold">Assistant Hub · Clinical Support</p>
+          <p className="text-white/50 mt-1">Clinical support and medical record reviews.</p>
         </div>
       </header>
 
