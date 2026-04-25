@@ -22,7 +22,7 @@ import {
   GoogleAuthProvider
 } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { HeartbeatLoader } from '@/components/HeartbeatLoader';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';

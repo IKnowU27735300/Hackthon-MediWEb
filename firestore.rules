@@ -54,16 +54,17 @@ service cloud.firestore {
       // (needed for staff discovery: finding doctors, suppliers, assistants)
       allow list: if isAuth();
 
-      // Anyone signed-in can read a specific profile
-      // (needed so patients can see clinic info, assistants can find their doctor, etc.)
-      allow get: if isAuth();
+      // Clinic profiles are public so patients can see name/location
+      // Assistant/Supplier profiles are only visible to authenticated staff
+      allow get: if resource.data.role == 'doctor' || isAuth();
 
       // A user can only create/update their OWN profile
       allow create: if isAuth() && request.auth.uid == uid;
       allow update: if isAuth() && (
         request.auth.uid == uid ||
-        // Doctors can update an assistant's businessId field to link them
-        (isDoctor() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['businessId', 'status', 'lastActive']))
+        // Doctors can update an assistant's businessId field to link them to their OWN clinic
+        (isDoctor() && request.resource.data.businessId == request.auth.uid && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['businessId', 'status', 'lastActive']))
       );
 
       // Only the owner can delete their own profile
@@ -109,18 +110,22 @@ service cloud.firestore {
 
       // STOCK HISTORY (prescription / supply requests)
       match /stock_history/{historyId} {
-        // Doctor sees all; assistant sees only their assigned records; supplier sees all pending requests
+        // Doctor sees all; assistant sees only their assigned records; supplier sees assigned OR pending requests
         allow read: if isOwner(uid)
           || assistantBelongsToClinic(uid)
-          || (isSupplier() && resource.data.supplierId == request.auth.uid);
+          || (isSupplier() && (resource.data.supplierId == request.auth.uid || resource.data.status == 'pending'));
 
         // Doctor + assistant can create stock logs
         allow create: if isClinicalStaff(uid);
 
-        // Doctor can update any record; supplier can only update status field (accept/reject)
+        // Doctor can update any record; 
+        // Supplier can only update if assigned OR if claiming a pending request
         allow update: if isOwner(uid)
           || assistantBelongsToClinic(uid)
-          || (isSupplier() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'acceptedAt']));
+          || (isSupplier() && 
+               (resource.data.supplierId == request.auth.uid || resource.data.status == 'pending') &&
+               request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'acceptedAt', 'supplierId', 'supplierName'])
+             );
 
         allow delete: if isOwner(uid);
       }
@@ -130,16 +135,15 @@ service cloud.firestore {
         // Clinical staff can read/write everything
         allow read, write: if isClinicalStaff(uid);
         
-        // Patients (unauthenticated) can GET the chat status and update it
-        allow get: if true;
-        allow update: if true;
+        // Patients (unauthenticated) can GET, CREATE and UPDATE their chat status
+        allow get, create, update: if true;
 
         match /messages/{messageId} {
           // Authenticated clinical staff can read/write messages
           allow read, write: if isClinicalStaff(uid);
-          // Unauthenticated patients can READ and CREATE messages
-          allow read: if true;
-          allow create: if true;
+        // Unauthenticated patients can READ and CREATE messages in their own thread
+        allow read: if true;
+        allow create: if true;
         }
       }
 
