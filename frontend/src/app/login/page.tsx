@@ -45,10 +45,21 @@ export default function LoginPage() {
     setError(null);
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, 'businesses', result.user.uid), {
-        role: selectedRole,
-        updatedAt: new Date()
-      }, { merge: true });
+      
+      // Fetch existing profile to check role
+      const profileRef = doc(db, 'businesses', result.user.uid);
+      const profileSnap = await getDoc(profileRef);
+      const existingData = profileSnap.data();
+
+      // Only update role if it doesn't exist or if explicitly changing owner role
+      // This prevents assistants from accidentally promoting themselves to doctors
+      if (!existingData?.role || existingData.role === 'doctor') {
+        await setDoc(profileRef, {
+          role: selectedRole,
+          updatedAt: new Date()
+        }, { merge: true });
+      }
+      
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Failed to login.');

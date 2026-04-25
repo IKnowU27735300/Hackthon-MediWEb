@@ -112,7 +112,7 @@ service cloud.firestore {
         // Doctor sees all; assistant sees only their assigned records; supplier sees all pending requests
         allow read: if isOwner(uid)
           || assistantBelongsToClinic(uid)
-          || isSupplier(); // Suppliers need to see pending requests directed at them
+          || (isSupplier() && resource.data.supplierId == request.auth.uid);
 
         // Doctor + assistant can create stock logs
         allow create: if isClinicalStaff(uid);
@@ -127,14 +127,18 @@ service cloud.firestore {
 
       // CUSTOMER CHATS (Patient inbox threads)
       match /customer_chats/{customerEmail} {
+        // Clinical staff can read/write everything
         allow read, write: if isClinicalStaff(uid);
-        // Patients (unauthenticated) update lastMsg/lastMsgTime metadata after sending
+        
+        // Patients (unauthenticated) can GET the chat status and update it
+        allow get: if true;
         allow update: if true;
 
         match /messages/{messageId} {
           // Authenticated clinical staff can read/write messages
           allow read, write: if isClinicalStaff(uid);
-          // Unauthenticated patients can CREATE a message (reply via patient portal)
+          // Unauthenticated patients can READ and CREATE messages
+          allow read: if true;
           allow create: if true;
         }
       }

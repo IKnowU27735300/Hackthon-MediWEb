@@ -28,6 +28,8 @@ export default function PatientPortal({ params }: { params: { businessId: string
              setAssignedAssistant(data.assignedAssistantName || "Medical Assistant");
           }
        }
+    }, (err) => {
+       console.warn("Chat Metadata restricted or missing:", err);
     });
 
     // 2. Subscribe to Messages
@@ -36,6 +38,9 @@ export default function PatientPortal({ params }: { params: { businessId: string
     const unsubMsg = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs.sort((a: any, b: any) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)));
+      setLoading(false);
+    }, (err) => {
+      console.error("Messages subscription failed:", err);
       setLoading(false);
     });
 
@@ -58,13 +63,14 @@ export default function PatientPortal({ params }: { params: { businessId: string
       });
       setInputText('');
       
-      // Update last message metadata
+      // Update last message metadata - use setDoc with merge for reliability
       const chatDocRef = doc(db, 'businesses', params.businessId, 'customer_chats', decodedEmail);
-      await updateDoc(chatDocRef, {
+      await setDoc(chatDocRef, {
         lastMsg: inputText,
         lastMsgTime: serverTimestamp(),
+        customerEmail: decodedEmail,
         unread: true // Flag for doctor
-      });
+      }, { merge: true });
 
     } catch (err) {
       console.error("Failed to send", err);
