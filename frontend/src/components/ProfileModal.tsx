@@ -146,27 +146,7 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {isSignup && (
-            <div className="space-y-2 mb-6">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">Identity Selection</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['doctor', 'assistant', 'supplier'] as const).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, role: r }))}
-                    className={`py-2 px-1 rounded-xl border text-[10px] font-bold uppercase tracking-tighter transition-all ${
-                      formData.role === r 
-                        ? 'bg-primary-600 border-primary-500 text-white shadow-lg shadow-primary-900/20' 
-                        : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
-                    }`}
-                  >
-                    {r === 'assistant' ? 'Assistant' : r.charAt(0).toUpperCase() + r.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+
 
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-center gap-2 mb-2">
