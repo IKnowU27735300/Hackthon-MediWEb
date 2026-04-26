@@ -179,8 +179,34 @@ service cloud.firestore {
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // Deny everything else by default
+    // PATIENTS & PATIENT CHATS (Authenticated Flow)
     // ─────────────────────────────────────────────────────────────────
+    
+    match /patients/{uid} {
+      allow get: if true;
+      allow create, update: if isAuth() && request.auth.uid == uid;
+      
+      match /medical_history/{historyId} {
+        allow read: if isAuth() && (request.auth.uid == uid || isClinicalStaff(resource.data.businessId));
+        allow create: if isAuth() && request.auth.uid == uid;
+      }
+    }
+
+    match /patient_chats/{chatId} {
+      allow read, write: if isAuth() && (
+        isClinicalStaff(resource.data.businessId) || 
+        request.auth.uid == resource.data.patientUid
+      );
+      allow create: if isAuth() && request.auth.uid == request.resource.data.patientUid;
+
+      match /messages/{messageId} {
+        allow read, write: if isAuth() && (
+          isClinicalStaff(get(/databases/$(database)/documents/patient_chats/$(chatId)).data.businessId) ||
+          request.auth.uid == get(/databases/$(database)/documents/patient_chats/$(chatId)).data.patientUid
+        );
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

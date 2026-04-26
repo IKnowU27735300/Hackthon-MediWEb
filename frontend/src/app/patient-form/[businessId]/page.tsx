@@ -2,15 +2,35 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, User, Mail, Phone, ArrowRight, Loader2, CheckCircle2, Stethoscope, ChevronDown } from 'lucide-react';
-import { createBooking } from '@/services/api';
-import { useRouter } from 'next/navigation';
+import { MessageSquare, User, Mail, Phone, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Stethoscope, ChevronDown } from 'lucide-react';
+import { createBooking, savePatientForm } from '@/services/api';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function PatientIntakeForm({ params }: { params: { businessId: string } }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const uid = searchParams.get('uid');
+  
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [user, setUser] = useState<any>(null);
+
+  React.useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) {
+        setUser(u);
+        setFormData(prev => ({
+          ...prev,
+          name: u.displayName || prev.name,
+          email: u.email || prev.email
+        }));
+      }
+    });
+    return () => unsub();
+  }, []);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -34,27 +54,33 @@ export default function PatientIntakeForm({ params }: { params: { businessId: st
     setError('');
 
     try {
-      // Create a Booking/Inquiry Record
-      // This ensures every form submission is a distinct, trackable item in the dashboard
-      // automatically handled by the 'Multiple Bookings' logic in the backend.
+      // 1. Use the new separate storage flow if we have a UID
+      const currentUid = uid || user?.uid;
       
-      const now = new Date();
-      const end = new Date(now.getTime() + 30 * 60000); // Default 30 min slot
+      if (currentUid) {
+        await savePatientForm(params.businessId, currentUid, {
+          ...formData,
+          details: `Requested service: ${formData.service}`
+        });
+        
+        // Redirect to portal using UID
+        router.push(`/patient-portal/${params.businessId}/${currentUid}`);
+      } else {
+        // Fallback to legacy email flow if not signed in (shouldn't happen with new flow)
+        await createBooking(params.businessId, {
+          customerName: formData.name,
+          customerEmail: formData.email,
+          customerPhone: formData.phone,
+          service: formData.service,
+          startTime: new Date().toISOString(),
+          endTime: new Date(Date.now() + 1800000).toISOString(),
+          status: 'upcoming',
+          note: "Submitted via legacy form (no sign-in)"
+        });
 
-      await createBooking(params.businessId, {
-        customerName: formData.name,
-        customerEmail: formData.email,
-        customerPhone: formData.phone, // Now capturing phone
-        service: formData.service,
-        startTime: now.toISOString(),
-        endTime: end.toISOString(),
-        status: 'upcoming', // Will show in dashboard as a new request
-        note: "Submitted via Online Intake Form"
-      });
-
-      // Redirect to status Lobby / Chat
-      const encodedEmail = encodeURIComponent(formData.email);
-      router.push(`/patient-portal/${params.businessId}/${encodedEmail}`);
+        const encodedEmail = encodeURIComponent(formData.email);
+        router.push(`/patient-portal/${params.businessId}/${encodedEmail}`);
+      }
       
     } catch (err: any) {
       console.error(err);
@@ -65,6 +91,17 @@ export default function PatientIntakeForm({ params }: { params: { businessId: st
 
   return (
     <div className="min-h-screen bg-[#f0ebf8] flex flex-col items-center py-12 px-4 font-sans text-gray-800">
+      {/* Back Button */}
+      <div className="absolute top-6 left-6 z-50">
+        <button 
+          onClick={() => router.push('/')}
+          className="p-3 rounded-xl bg-white/80 hover:bg-white border border-gray-200 transition-all text-gray-600 hover:text-purple-600 shadow-sm backdrop-blur-md flex items-center gap-2 px-5 group"
+        >
+          <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+          <span className="text-xs font-bold uppercase tracking-widest">Back to Clinics</span>
+        </button>
+      </div>
+
       {/* Header Image / Branding */}
       <div className="w-full max-w-2xl bg-white rounded-t-lg border-t-[10px] border-purple-600 shadow-sm mb-4 overflow-hidden">
          <div className="h-32 bg-purple-100 flex items-center justify-center">
@@ -75,7 +112,8 @@ export default function PatientIntakeForm({ params }: { params: { businessId: st
       {/* Main Card */}
       <div className="w-full max-w-2xl bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden relative">
         {step === 3 ? (
-            <motion.div 
+
+      <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="p-10 text-center"

@@ -41,7 +41,7 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
     if (!targetBusinessId) return;
     try {
       await acceptStockRequest(targetBusinessId, requestId);
-      alert("Request accepted and inventory updated.");
+      onAction(); // Refresh data
     } catch (err) {
       console.error(err);
       alert("Failed to accept request.");
@@ -53,7 +53,7 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
     if (!targetBusinessId) return;
     try {
       await rejectStockRequest(targetBusinessId, requestId);
-      alert("Request rejected.");
+      onAction(); // Refresh data
     } catch (err) {
       console.error(err);
       alert("Failed to reject request.");

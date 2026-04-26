@@ -33,7 +33,6 @@ import { MediWebLogo } from '@/components/MediWebLogo';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedRole, setSelectedRole] = useState<'doctor' | 'assistant' | 'supplier'>('doctor');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSignupModal, setShowSignupModal] = useState(false);
@@ -52,11 +51,11 @@ export default function LoginPage() {
       const profileSnap = await getDoc(profileRef);
       const existingData = profileSnap.data();
 
-      // Only update role if it doesn't exist or if explicitly changing owner role
-      // This prevents assistants from accidentally promoting themselves to doctors
-      if (!existingData?.role || existingData.role === 'doctor') {
+      // Only update role if it doesn't exist
+      // Default to doctor if role is missing (or could rely on external assignment)
+      if (!existingData?.role) {
         await setDoc(profileRef, {
-          role: selectedRole,
+          role: 'doctor',
           updatedAt: new Date()
         }, { merge: true });
       }
@@ -111,12 +110,6 @@ export default function LoginPage() {
     setShowSignupModal(true);
   };
 
-  const roles = [
-    { id: 'doctor', label: 'Doctor', icon: <User size={20} /> },
-    { id: 'assistant', label: 'Clinical Team', icon: <Users size={20} /> },
-    { id: 'supplier', label: 'Supplies', icon: <Package size={20} /> }
-  ];
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black">
@@ -147,40 +140,28 @@ export default function LoginPage() {
       
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary-600/10 rounded-full blur-[120px] z-0" />
       
+      {/* Back Button */}
+      <div className="absolute top-6 left-6 z-50">
+        <Link 
+          href="/" 
+          className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-white/70 hover:text-white shadow-2xl backdrop-blur-xl group"
+        >
+          <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+          <span className="text-[10px] font-black uppercase tracking-[0.3em]">Return to Main</span>
+        </Link>
+      </div>
+
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="max-w-md w-full relative z-10"
       >
-        <Link 
-          href="/" 
-          className="absolute -top-16 left-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all text-[10px] uppercase font-bold tracking-widest backdrop-blur-sm group"
-        >
-          <ArrowLeft className="group-hover:-translate-x-1 transition-transform" size={14} /> 
-          Back to Home
-        </Link>
+
 
         <div className="text-center mb-8">
           <MediWebLogo className="w-20 h-20 mx-auto mb-6 text-primary-500" />
           <h1 className="text-4xl font-extrabold tracking-tighter mb-2 bg-gradient-to-b from-white via-primary-200 to-primary-500 bg-clip-text text-transparent italic">MEDIWEB</h1>
           <p className="text-primary-200/40 text-xs font-bold uppercase tracking-[0.2em]">Secure Clinical Gateway</p>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3 mb-8">
-          {roles.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setSelectedRole(r.id as any)}
-              className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-2 ${
-                selectedRole === r.id 
-                ? 'bg-primary-600 border-primary-500 shadow-xl shadow-primary-950/40 text-white dark:text-black' 
-                : 'bg-white/5 border-white/10 hover:bg-white/10 text-muted hover:text-primary-400'
-              }`}
-            >
-              <div className={selectedRole === r.id ? 'text-white dark:text-black' : 'text-primary-400'}>{r.icon}</div>
-              <span className="text-[10px] font-extrabold uppercase tracking-widest">{r.label}</span>
-            </button>
-          ))}
         </div>
 
         <div className="glass-card p-8">
@@ -231,7 +212,7 @@ export default function LoginPage() {
             >
               {loading ? <Loader2 size={20} className="animate-spin" /> : (
                 <>
-                  Access {selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)} Portal
+                  Access Portal
                   <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                 </>
               )}
@@ -275,7 +256,7 @@ export default function LoginPage() {
         {showSignupModal && (
           <ProfileModal 
             isSignup 
-            role={selectedRole}
+            role="doctor"
             onComplete={() => {
               setShowSignupModal(false);
               router.push('/dashboard'); // Already updated to dashboard in previous step

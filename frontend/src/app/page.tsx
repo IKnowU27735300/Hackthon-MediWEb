@@ -2,14 +2,16 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldCheck, User, ArrowRight, X, Lock, MapPin } from 'lucide-react';
+import { ShieldCheck, User, ArrowRight, ArrowLeft, X, Lock, MapPin } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MediWebLogo } from '@/components/MediWebLogo';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collection, getDocs, query, where, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '@/lib/firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { useTheme } from '@/context/ThemeContext';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Loader2 } from 'lucide-react';
+import { savePatientProfile } from '@/services/api';
 
 export default function LandingPage() {
   // Staff Gate State
@@ -29,17 +31,48 @@ export default function LandingPage() {
     setShowPasswordModal(true);
   };
 
+  const [patientUser, setPatientUser] = useState<any>(null);
+
   const handlePatientAccess = async () => {
-    setShowClinicModal(true);
-    setLoadingClinics(true);
+    const provider = new GoogleAuthProvider();
     try {
-      // Fetch all doctors/clinics for the patient to choose from
+      const result = await signInWithPopup(auth, provider);
+      setPatientUser(result.user);
+      
+      // Save global profile immediately
+      await savePatientProfile(result.user.uid, {
+        displayName: result.user.displayName,
+        email: result.user.email,
+        photoURL: result.user.photoURL,
+      });
+
+      setShowClinicModal(true);
+      setLoadingClinics(true);
+      
       const q = query(collection(db, 'businesses'), where('role', '==', 'doctor'));
       const snap = await getDocs(q);
       const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClinics(list);
     } catch (err) {
-      console.error("Failed to fetch clinics", err);
+      console.error("Patient Access failed:", err);
+    } finally {
+      setLoadingClinics(false);
+    }
+  };
+
+  const handlePatientLogin = async (clinicId: string) => {
+    if (!patientUser) return;
+    setLoadingClinics(true);
+    try {
+      // Update patient profile with last selected clinic
+      await savePatientProfile(patientUser.uid, {
+        lastSelectedClinic: clinicId
+      });
+
+      // Redirect to patient intake form
+      router.push(`/patient-form/${clinicId}?uid=${patientUser.uid}`);
+    } catch (err) {
+      console.error("Clinic selection failed:", err);
     } finally {
       setLoadingClinics(false);
     }
@@ -187,9 +220,18 @@ export default function LandingPage() {
 
                 <button 
                   type="submit"
-                  className="w-full glass-button uppercase tracking-widest text-xs"
+                  className="w-full glass-button uppercase tracking-widest text-xs mb-3"
                 >
                   Verify Access
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={() => setShowPasswordModal(false)}
+                  className="w-full py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-primary-500 transition-colors flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft size={12} />
+                  Back to Portal
                 </button>
               </form>
             </motion.div>
@@ -228,22 +270,24 @@ export default function LandingPage() {
                   <div className="text-center py-10 text-muted animate-pulse">
                     Searching for nearby clinics...
                   </div>
-                ) : clinics.length > 0 ? (
+                                ) : clinics.length > 0 ? (
                   clinics.map((clinic) => (
-                    <Link key={clinic.id} href={`/patient-form/${clinic.id}`}>
-                      <div className="p-4 bg-white/5 dark:bg-white/5 border border-white/10 dark:border-white/10 rounded-xl hover:bg-blue-500/5 dark:hover:bg-blue-500/10 hover:border-blue-500/50 transition-all cursor-pointer group mb-3">
-                         <div className="flex items-center justify-between">
-                            <span className="font-bold group-hover:text-blue-500 transition-colors">
-                              {clinic.displayName || "Medical Practice"}
-                            </span>
-                            <ArrowRight size={14} className="text-muted group-hover:translate-x-1 group-hover:text-blue-500 transition-all"/>
-                         </div>
-                         <div className="text-xs text-muted flex items-center gap-2 mt-1">
-                            <MapPin size={10} />
-                            {clinic.location || "Online"}
-                         </div>
-                      </div>
-                    </Link>
+                    <div 
+                      key={clinic.id} 
+                      onClick={() => handlePatientLogin(clinic.id)}
+                      className="p-4 bg-white/5 dark:bg-white/5 border border-white/10 dark:border-white/10 rounded-xl hover:bg-blue-500/5 dark:hover:bg-blue-500/10 hover:border-blue-500/50 transition-all cursor-pointer group mb-3"
+                    >
+                       <div className="flex items-center justify-between">
+                          <span className="font-bold group-hover:text-blue-500 transition-colors">
+                            {clinic.displayName || "Medical Practice"}
+                          </span>
+                          <ArrowRight size={14} className="text-muted group-hover:translate-x-1 group-hover:text-blue-500 transition-all"/>
+                       </div>
+                       <div className="text-xs text-muted flex items-center gap-2 mt-1">
+                          <MapPin size={10} />
+                          {clinic.location || "Online"}
+                       </div>
+                    </div>
                   ))
                 ) : (
                   <div className="text-center py-8 text-muted">
@@ -253,6 +297,16 @@ export default function LandingPage() {
                     </Link>
                   </div>
                 )}
+              </div>
+
+              <div className="pt-6 border-t border-white/5 flex-shrink-0">
+                <button 
+                  onClick={() => setShowClinicModal(false)}
+                  className="w-full py-3 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-blue-500 transition-colors"
+                >
+                  <ArrowLeft size={14} />
+                  Back to Selection
+                </button>
               </div>
             </motion.div>
           </div>

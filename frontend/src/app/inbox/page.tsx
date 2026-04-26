@@ -16,13 +16,11 @@ import {
 import { Sidebar } from '@/components/Sidebar';
 import { HeartbeatLoader } from '@/components/HeartbeatLoader';
 import { 
-  subscribeToInbox, 
-  subscribeToMessages, 
-  sendMessage,
-  subscribeToInternalMessages,
-  sendInternalMessage,
   subscribeToActiveStaff,
-  deleteChat
+  deleteChat,
+  subscribeToPatientInbox,
+  subscribeToPatientMessages,
+  sendPatientMessage
 } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -56,7 +54,7 @@ export default function Inbox() {
       if (isMounted) setLoading(false);
     }, 5000);
 
-    const unsubscribe = subscribeToInbox(businessId, (data) => {
+    const unsubscribe = subscribeToPatientInbox(businessId, (data) => {
       if (isMounted) {
         setConversations(data.sort((a, b) => (b.lastMsgTime?.seconds || 0) - (a.lastMsgTime?.seconds || 0)));
         setLoading(false);
@@ -111,7 +109,7 @@ export default function Inbox() {
     let unsubscribe: (() => void) | undefined;
 
     if (activeTab === 'patients') {
-      unsubscribe = subscribeToMessages(businessId, selectedChat.customerEmail, (msgs) => {
+      unsubscribe = subscribeToPatientMessages(businessId, selectedChat.patientUid, (msgs) => {
         if (isMounted) setMessages(msgs);
       });
     } else {
@@ -134,10 +132,11 @@ export default function Inbox() {
     setNewMessage('');
 
     if (activeTab === 'patients') {
-      await sendMessage(businessId!, selectedChat.customerEmail, {
+      await sendPatientMessage(businessId!, selectedChat.patientUid, {
         content: msg,
         sender: 'staff',
-        customerName: selectedChat.customerName
+        customerName: selectedChat.patientName,
+        customerEmail: selectedChat.patientEmail
       });
     } else {
       await sendInternalMessage(businessId!, selectedChat.id, {
@@ -309,8 +308,8 @@ export default function Inbox() {
                     {(selectedChat.customerName || selectedChat.businessName || 'S')[0]}
                   </div>
                   <div>
-                    <div className="font-bold">{selectedChat.customerName || selectedChat.businessName || 'Staff Member'}</div>
-                    <div className="text-xs text-muted">{selectedChat.customerEmail || selectedChat.role || 'Clinical Profile'}</div>
+                    <div className="font-bold">{selectedChat.patientName || selectedChat.customerName || selectedChat.businessName || 'Staff Member'}</div>
+                    <div className="text-xs text-muted">{selectedChat.patientEmail || selectedChat.customerEmail || selectedChat.role || 'Clinical Profile'}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -400,16 +399,16 @@ export default function Inbox() {
             <div className="w-64 glass-card p-6 hidden xl:flex flex-col gap-6">
               <div className="text-center">
                 <div className="w-16 h-16 bg-primary-600/20 text-primary-400 rounded-2xl mx-auto mb-4 flex items-center justify-center font-bold text-xl">
-                  {selectedChat.customerName?.[0]}
+                  {(selectedChat.patientName || selectedChat.customerName)?.[0]}
                 </div>
-                <h3 className="font-bold">{selectedChat.customerName}</h3>
+                <h3 className="font-bold">{selectedChat.patientName || selectedChat.customerName}</h3>
                 <div className="text-[10px] text-white/20 uppercase font-mono mt-1">Patient History Secure</div>
               </div>
               
               <div className="space-y-4 border-t border-white/5 pt-6">
                 <div className="flex items-center gap-3 text-xs text-white/60">
                   <Phone size={14} className="text-white/20" />
-                  {selectedChat.customerPhone || 'Verified Contact'}
+                  {selectedChat.patientEmail || selectedChat.customerEmail || 'Verified Contact'}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-white/60">
                   <Calendar size={14} className="text-white/20" />

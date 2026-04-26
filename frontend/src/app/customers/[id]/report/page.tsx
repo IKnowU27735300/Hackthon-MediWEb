@@ -88,6 +88,9 @@ export default function PatientReportPage() {
             return;
           }
           setPatient({ id: patientSnap.id, ...pData });
+          if (pData.assignedAssistantId) {
+            setSelectedAssistant(pData.assignedAssistantId);
+          }
         }
 
         // Fetch Existing Report/Note

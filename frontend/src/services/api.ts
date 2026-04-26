@@ -100,25 +100,9 @@ export function subscribeToDashboardSummary(businessId: string, callback: (data:
 
   if (isClinicalStaff && role !== 'supplier') {
     // Apply RBAC filters for real-time snapshots
-    const bookingsQuery = (role === 'assistant' && userId) 
-      ? query(bookingsRef, or(where("assignedAssistantId", "==", userId), where("sharedWithAssistant", "==", true)))
-      : bookingsRef;
-
-    const contactsQuery = (role === 'assistant' && userId)
-      ? query(contactsRef, or(where("assignedAssistantId", "==", userId), where("sharedWithAssistant", "==", true)))
-      : contactsRef;
-
-    const historyQuery = (role === 'assistant' && userId)
-      ? query(
-          historyRef, 
-          or(
-            where("assignedAssistantId", "==", userId), 
-            where("sharedWithAssistant", "==", true)
-          ),
-          orderBy('createdAt', 'desc'),
-          limit(50)
-        )
-      : query(historyRef, orderBy('createdAt', 'desc'), limit(50));
+    const bookingsQuery = bookingsRef;
+    const contactsQuery = contactsRef;
+    const historyQuery = query(historyRef, orderBy('createdAt', 'desc'), limit(50));
 
     unsubBookings = onSnapshot(bookingsQuery, (snap) => {
       state.bookings = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
@@ -343,7 +327,8 @@ export async function assignFormToAssistant(businessId: string, bookingId: strin
       const histSnap = await getDocs(histQ);
       for (const histDoc of histSnap.docs) {
         await setDoc(doc(db, 'businesses', businessId, 'stock_history', histDoc.id), {
-          assignedAssistantId: assistantId
+          assignedAssistantId: assistantId,
+          sharedWithAssistant: true
         }, { merge: true });
       }
     }
@@ -748,26 +733,36 @@ export async function acceptStockRequest(businessId: string, requestId: string) 
       }
 
       // 2. Update SUPPLIER Inventory (The one fulfilling the request)
-      // For a supplier, fulfillment usually means their stock goes DOWN (negative adjustment of the 'amount')
+      // For a supplier, fulfillment means their stock goes DOWN
       const supplierId = currentUser.uid;
-      const supplierQ = query(collection(db, 'businesses', supplierId, 'inventory'), where("name", "==", itemNameNormalized));
-      const supplierSnap = await getDocs(supplierQ);
+      const supplierInvRef = collection(db, 'businesses', supplierId, 'inventory');
       
-      if (!supplierSnap.empty) {
+      // Try to find the item with a case-insensitive match (manual check for better reliability)
+      const supplierSnap = await getDocs(supplierInvRef);
+      const existingItem = supplierSnap.docs.find(doc => 
+        doc.data().name?.toLowerCase().trim() === itemNameNormalized.toLowerCase().trim()
+      );
+      
+      if (existingItem) {
         // Supplier's stock always goes DOWN by the amount requested
-        await updateDoc(doc(db, 'businesses', supplierId, 'inventory', supplierSnap.docs[0].id), {
-          quantity: increment(-amount), 
+        const currentQty = existingItem.data().quantity || 0;
+        const newQty = Number(currentQty) - amount;
+        
+        await updateDoc(doc(db, 'businesses', supplierId, 'inventory', existingItem.id), {
+          quantity: newQty, 
           updatedAt: serverTimestamp()
         });
+        console.log(`Inventory: Supplier ${supplierId} stock for ${itemNameNormalized} reduced: ${currentQty} -> ${newQty}`);
       } else {
         // Create the item for the supplier if it doesn't exist, starting at negative (dispatched)
-        await addDoc(collection(db, 'businesses', supplierId, 'inventory'), {
+        await addDoc(supplierInvRef, {
           name: itemNameNormalized,
           quantity: -amount,
           threshold: 5,
           category: 'Medical',
           updatedAt: serverTimestamp()
         });
+        console.log(`Created new item for supplier ${supplierId}: ${itemNameNormalized} (Qty: -${amount})`);
       }
     }
 
@@ -911,4 +906,117 @@ export async function deleteChat(businessId: string, chatId: string, type: 'pati
   const path = type === 'patients' ? 'customer_chats' : 'internal_chats';
   const chatRef = doc(db, 'businesses', businessId, path, chatId);
   await deleteDoc(chatRef);
+}
+
+// --- NEW PATIENT-CENTRIC SYSTEM (SEPARATE STORAGE) ---
+
+export async function savePatientProfile(uid: string, profileData: any) {
+  const patientRef = doc(db, 'patients', uid);
+  await setDoc(patientRef, {
+    ...profileData,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+export async function sendPatientMessage(businessId: string, patientUid: string, messageData: any) {
+  const chatId = `${businessId}_${patientUid}`;
+  const messagesRef = collection(db, 'patient_chats', chatId, 'messages');
+  
+  await addDoc(messagesRef, {
+    ...messageData,
+    timestamp: serverTimestamp()
+  });
+
+  // Update conversation metadata in the separate patient_chats collection
+  const chatRef = doc(db, 'patient_chats', chatId);
+  await setDoc(chatRef, {
+    businessId,
+    patientUid,
+    patientName: messageData.customerName || 'Patient',
+    patientEmail: messageData.customerEmail,
+    lastMsg: messageData.content,
+    lastMsgTime: serverTimestamp(),
+    unread: messageData.sender !== 'staff' && messageData.sender !== 'doctor',
+    type: 'patient_chat'
+  }, { merge: true });
+}
+
+export function subscribeToPatientInbox(businessId: string, callback: (conversations: any[]) => void) {
+  if (!businessId || businessId === 'undefined') return () => {};
+  
+  const q = query(
+    collection(db, 'patient_chats'), 
+    where('businessId', '==', businessId)
+  );
+
+  return onSnapshot(q, (snap) => {
+    const conversations = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(conversations);
+  }, (err) => {
+    console.warn("Patient Inbox subscription failed:", err);
+    callback([]);
+  });
+}
+
+export function subscribeToPatientMessages(businessId: string, patientUid: string, callback: (messages: any[]) => void) {
+  const chatId = `${businessId}_${patientUid}`;
+  const q = query(collection(db, 'patient_chats', chatId, 'messages'));
+  
+  return onSnapshot(q, (snap) => {
+    const msgs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(msgs.sort((a: any, b: any) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)));
+  }, (err) => {
+    console.error("Patient messages subscription failed:", err);
+    callback([]);
+  });
+}
+
+export async function savePatientForm(businessId: string, uid: string, data: any) {
+  // 1. Update/Save Patient Global Profile
+  const patientRef = doc(db, 'patients', uid);
+  await setDoc(patientRef, {
+    name: data.name,
+    email: data.email,
+    phone: data.phone,
+    age: data.age || null,
+    gender: data.gender || null,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+
+  // 2. Save Medical Entry to Patient's History (Separate)
+  const historyRef = collection(db, 'patients', uid, 'medical_history');
+  await addDoc(historyRef, {
+    businessId,
+    service: data.service,
+    details: data.details || "Initial Inquiry",
+    timestamp: serverTimestamp()
+  });
+
+  // 3. Initialize Chat in the separate patient_chats collection
+  const chatId = `${businessId}_${uid}`;
+  const chatRef = doc(db, 'patient_chats', chatId);
+  await setDoc(chatRef, {
+    businessId,
+    patientUid: uid,
+    patientName: data.name,
+    patientEmail: data.email,
+    lastMsg: `Form Submitted: ${data.service}`,
+    lastMsgTime: serverTimestamp(),
+    unread: true,
+    type: 'patient_chat'
+  }, { merge: true });
+
+  // 4. Create traditional booking for the clinic dashboard
+  const bookingsRef = collection(db, 'businesses', businessId, 'bookings');
+  await addDoc(bookingsRef, {
+    customerName: data.name,
+    customerEmail: data.email,
+    customerPhone: data.phone,
+    patientUid: uid, // Link to separate data
+    service: data.service,
+    startTime: new Date().toISOString(),
+    endTime: new Date(Date.now() + 1800000).toISOString(),
+    status: 'upcoming',
+    note: "Submitted via online form"
+  });
 }

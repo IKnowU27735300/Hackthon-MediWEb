@@ -4,74 +4,128 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, User, Bot, Loader2, ArrowLeft, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 
 export default function PatientPortal({ params }: { params: { businessId: string, email: string } }) {
-  const decodedEmail = decodeURIComponent(params.email);
+  const identifier = decodeURIComponent(params.email); // This could be email or UID
   const router = useRouter();
   
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
-  const [assignedAssistant, setAssignedAssistant] = useState<any>(null); // Simplified: Just store name/ID?
+  const [assignedAssistant, setAssignedAssistant] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    if (!decodedEmail || !params.businessId) return;
-
-    // 1. Subscribe to Chat Metadata (for assignment status)
-    const chatDocRef = doc(db, 'businesses', params.businessId, 'customer_chats', decodedEmail);
-    const unsubChat = onSnapshot(chatDocRef, (docSnap) => {
-       if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.assignedAssistantId) {
-             setAssignedAssistant(data.assignedAssistantName || "Medical Assistant");
-          }
-       }
-    }, (err) => {
-       console.warn("Chat Metadata restricted or missing:", err);
+    const unsubAuth = onAuthStateChanged(auth, (u) => {
+      setUser(u);
     });
+    return () => unsubAuth();
+  }, []);
 
-    // 2. Subscribe to Messages
-    const messagesRef = collection(db, 'businesses', params.businessId, 'customer_chats', decodedEmail, 'messages');
-    const q = query(messagesRef);
-    const unsubMsg = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setMessages(msgs.sort((a: any, b: any) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)));
-      setLoading(false);
-    }, (err) => {
-      console.error("Messages subscription failed:", err);
-      setLoading(false);
-    });
+  useEffect(() => {
+    if (!identifier || !params.businessId) return;
+
+    // Use a combined ID for the chat in the separate collection
+    // If identifier is an email, we might want to check both, but the new flow uses UID
+    const isUid = !identifier.includes('@');
+    const chatId = isUid ? `${params.businessId}_${identifier}` : null;
+
+    let unsubChat = () => {};
+    let unsubMsg = () => {};
+
+    if (isUid) {
+      // 1. Subscribe to NEW Separate Chat Metadata
+      const chatDocRef = doc(db, 'patient_chats', chatId!);
+      unsubChat = onSnapshot(chatDocRef, (docSnap) => {
+         if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.assignedAssistantId) {
+               setAssignedAssistant(data.assignedAssistantName || "Medical Assistant");
+            }
+         }
+      });
+
+      // 2. Subscribe to NEW Separate Messages
+      const messagesRef = collection(db, 'patient_chats', chatId!, 'messages');
+      unsubMsg = onSnapshot(query(messagesRef), (snapshot) => {
+        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setMessages(msgs.sort((a: any, b: any) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)));
+        setLoading(false);
+      });
+    } else {
+      // FALLBACK for old email-based chats (Legacy)
+      const chatDocRef = doc(db, 'businesses', params.businessId, 'customer_chats', identifier);
+      unsubChat = onSnapshot(chatDocRef, (docSnap) => {
+         if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.assignedAssistantId) {
+               setAssignedAssistant(data.assignedAssistantName || "Medical Assistant");
+            }
+         }
+      });
+
+      const messagesRef = collection(db, 'businesses', params.businessId, 'customer_chats', identifier, 'messages');
+      unsubMsg = onSnapshot(query(messagesRef), (snapshot) => {
+        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setMessages(msgs.sort((a: any, b: any) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)));
+        setLoading(false);
+      });
+    }
 
     return () => {
       unsubChat();
       unsubMsg();
     }
-  }, [decodedEmail, params.businessId]);
+  }, [identifier, params.businessId]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
-    try {
-      const messagesRef = collection(db, 'businesses', params.businessId, 'customer_chats', decodedEmail, 'messages');
-      await addDoc(messagesRef, {
-        content: inputText,
-        sender: 'patient',
-        timestamp: serverTimestamp()
-      });
-      setInputText('');
-      
-      // Update last message metadata - use setDoc with merge for reliability
-      const chatDocRef = doc(db, 'businesses', params.businessId, 'customer_chats', decodedEmail);
-      await setDoc(chatDocRef, {
-        lastMsg: inputText,
-        lastMsgTime: serverTimestamp(),
-        customerEmail: decodedEmail,
-        unread: true // Flag for doctor
-      }, { merge: true });
+    const isUid = !identifier.includes('@');
+    const chatId = isUid ? `${params.businessId}_${identifier}` : null;
 
+    try {
+      if (isUid) {
+        const messagesRef = collection(db, 'patient_chats', chatId!, 'messages');
+        await addDoc(messagesRef, {
+          content: inputText,
+          sender: 'patient',
+          timestamp: serverTimestamp()
+        });
+
+        const chatDocRef = doc(db, 'patient_chats', chatId!);
+        await setDoc(chatDocRef, {
+          lastMsg: inputText,
+          lastMsgTime: serverTimestamp(),
+          patientUid: identifier,
+          patientName: user?.displayName || 'Patient',
+          patientEmail: user?.email || '',
+          businessId: params.businessId,
+          unread: true
+        }, { merge: true });
+      } else {
+        const messagesRef = collection(db, 'businesses', params.businessId, 'customer_chats', identifier, 'messages');
+        await addDoc(messagesRef, {
+          content: inputText,
+          sender: 'patient',
+          timestamp: serverTimestamp()
+        });
+        
+        const chatDocRef = doc(db, 'businesses', params.businessId, 'customer_chats', identifier);
+        await setDoc(chatDocRef, {
+          lastMsg: inputText,
+          lastMsgTime: serverTimestamp(),
+          customerEmail: identifier,
+          unread: true
+        }, { merge: true });
+      }
+
+      setInputText('');
     } catch (err) {
       console.error("Failed to send", err);
       alert("Error sending message. Please refresh.");
