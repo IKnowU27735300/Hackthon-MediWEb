@@ -675,7 +675,7 @@ export async function logStockActions(businessId: string, actions: any[], patien
       assignedAssistantId: finalAssistantId,
       createdById: createdById || null,
       supplierId: supplierId || null,
-      status: supplierId ? 'pending' : 'completed', // If a supplier is selected, it's a request
+      status: supplierId ? 'pending' : 'accepted', // If a supplier is selected, it's a request
       items: actions,
       prescriptionNotes: prescriptionNotes || null,
       createdAt: serverTimestamp()
@@ -726,7 +726,7 @@ export async function acceptStockRequest(businessId: string, requestId: string) 
     }
 
     await setDoc(requestRef, {
-      status: 'completed',
+      status: 'accepted',
       acceptedAt: serverTimestamp()
     }, { merge: true });
   }

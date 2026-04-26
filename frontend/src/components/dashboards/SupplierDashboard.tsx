@@ -31,6 +31,10 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
     log.supplierId === user?.uid && log.status === 'pending'
   );
 
+  const completedRequests = (displayStats.all_history || []).filter((log: any) => 
+    log.supplierId === user?.uid && (log.status === 'completed' || log.status === 'accepted')
+  );
+
   const handleAcceptRequest = async (requestId: string, clinicId?: string) => {
     const targetBusinessId = clinicId || businessId;
     if (!targetBusinessId) return;
