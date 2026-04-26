@@ -26,11 +26,11 @@ export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
 
   const assignedCases = displayStats.all_bookings?.filter((b: any) => 
     (b.assignedAssistantId === user?.uid || b.sharedWithAssistant === true) &&
-    b.status === 'pending_review'
+    (b.status === 'pending_review' || b.status === 'pending' || b.status === 'upcoming')
   ) || [];
 
   const recentSupplierResponses = (displayStats.all_history || []).filter((log: any) => 
-    log.status === 'pending' || log.status === 'completed' || log.status === 'accepted' || log.status === 'rejected'
+    log.status === 'pending' || log.status === 'completed' || log.status === 'accepted' || log.status === 'rejected' || log.status === 'dispatched'
   );
 
   const router = useRouter();

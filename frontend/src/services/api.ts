@@ -14,7 +14,10 @@ import {
   updateDoc,
   collectionGroup,
   orderBy,
-  limit
+  limit,
+  or,
+  and,
+  increment
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -98,18 +101,24 @@ export function subscribeToDashboardSummary(businessId: string, callback: (data:
   if (isClinicalStaff && role !== 'supplier') {
     // Apply RBAC filters for real-time snapshots
     const bookingsQuery = (role === 'assistant' && userId) 
-      ? query(bookingsRef, where("assignedAssistantId", "==", userId))
+      ? query(bookingsRef, or(where("assignedAssistantId", "==", userId), where("sharedWithAssistant", "==", true)))
       : bookingsRef;
 
     const contactsQuery = (role === 'assistant' && userId)
-      ? query(contactsRef, where("assignedAssistantId", "==", userId)) // Primary assignment
+      ? query(contactsRef, or(where("assignedAssistantId", "==", userId), where("sharedWithAssistant", "==", true)))
       : contactsRef;
 
     const historyQuery = (role === 'assistant' && userId)
-      ? query(historyRef, where("assignedAssistantId", "in", [userId, null]))
-      : (role === 'doctor' && userId && userId !== businessId)
-        ? query(historyRef, where("createdById", "==", userId))
-        : historyRef;
+      ? query(
+          historyRef, 
+          or(
+            where("assignedAssistantId", "==", userId), 
+            where("sharedWithAssistant", "==", true)
+          ),
+          orderBy('createdAt', 'desc'),
+          limit(50)
+        )
+      : query(historyRef, orderBy('createdAt', 'desc'), limit(50));
 
     unsubBookings = onSnapshot(bookingsQuery, (snap) => {
       state.bookings = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
@@ -129,9 +138,12 @@ export function subscribeToDashboardSummary(businessId: string, callback: (data:
      // Suppliers need to see prescriptions across all clinics where they are assigned
      const historyQuery = query(
        collectionGroup(db, 'stock_history'),
-       where('supplierId', '==', userId),
+       or(
+         where('supplierId', '==', userId),
+         and(where('status', '==', 'pending'), where('supplierId', '==', null))
+       ),
        orderBy('createdAt', 'desc'),
-       limit(20)
+       limit(30)
      );
      
      unsubHistory = onSnapshot(historyQuery, (snap) => {
@@ -613,25 +625,31 @@ export async function updateInventoryItem(businessId: string, itemId: string, da
   }, { merge: true });
   return { status: 'success' };
 }
-export async function logStockActions(businessId: string, actions: any[], patientName: string, patientEmail?: string, supplierId?: string, prescriptionNotes?: string, assistantId?: string, createdById?: string) {
-  if (!businessId) throw new Error("Missing Clinical Context (BusinessID)");
-  if (!actions || actions.length === 0) return { status: 'skipped' };
-
+export async function logStockActions(businessId: string, data: any) {
   try {
-    // Determine if this patient is currently assigned to an assistant
-    let finalAssistantId = assistantId || null;
+    const { patientName, patientEmail, actions, prescriptionNotes, supplierId } = data;
+    
+    // 1. Resolve Assistant Visibility
+    let finalAssistantId = data.assignedAssistantId;
+    let sharedWithAssistant = data.sharedWithAssistant ?? false;
+
     if (!finalAssistantId && patientEmail) {
-      const q = query(collection(db, 'businesses', businessId, 'contacts'), where("email", "==", patientEmail));
+      // If not passed explicitly, try to fetch from existing patient record
+      const pRef = collection(db, 'businesses', businessId, 'contacts');
+      const q = query(pRef, where("email", "==", patientEmail));
       const snap = await getDocs(q);
       if (!snap.empty) {
-        finalAssistantId = snap.docs[0].data().assignedAssistantId || null;
+        const pData = snap.docs[0].data();
+        finalAssistantId = pData.assignedAssistantId || null;
+        sharedWithAssistant = pData.sharedWithAssistant || false;
       }
     }
 
     for (const action of actions) {
       if (!action.itemName) continue;
 
-      const q = query(collection(db, 'businesses', businessId, 'inventory'), where("name", "==", action.itemName));
+      const itemNameTrimmed = action.itemName.trim();
+      const q = query(collection(db, 'businesses', businessId, 'inventory'), where("name", "==", itemNameTrimmed));
       const querySnapshot = await getDocs(q);
       
       let itemRef;
@@ -659,11 +677,11 @@ export async function logStockActions(businessId: string, actions: any[], patien
 
       // Only update inventory immediately if NOT a supplier request
       if (!supplierId) {
-        await setDoc(itemRef, {
-          quantity: newQty,
+        await updateDoc(itemRef, {
+          quantity: increment(adjustment),
           lastPatient: patientName,
           updatedAt: serverTimestamp()
-        }, { merge: true });
+        });
       }
     }
 
@@ -673,11 +691,11 @@ export async function logStockActions(businessId: string, actions: any[], patien
       patientName,
       patientEmail: patientEmail || null,
       assignedAssistantId: finalAssistantId,
-      createdById: createdById || null,
+      sharedWithAssistant: sharedWithAssistant,
       supplierId: supplierId || null,
       status: supplierId ? 'pending' : 'accepted', // If a supplier is selected, it's a request
       items: actions,
-      prescriptionNotes: prescriptionNotes || null,
+      prescriptionNotes: prescriptionNotes || '',
       createdAt: serverTimestamp()
     });
 
@@ -697,6 +715,10 @@ export async function rejectStockRequest(businessId: string, requestId: string) 
 }
 
 export async function acceptStockRequest(businessId: string, requestId: string) {
+  const { auth } = await import('@/lib/firebase');
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error("Authentication required to accept requests");
+
   const requestRef = doc(db, 'businesses', businessId, 'stock_history', requestId);
   const snap = await getDoc(requestRef);
   
@@ -704,30 +726,47 @@ export async function acceptStockRequest(businessId: string, requestId: string) 
     const data = snap.data();
     const actions = data.items || [];
     
-    // Process the inventory updates now that it's accepted
+    // Process the inventory updates for BOTH the clinic AND the supplier
     for (const action of actions) {
-      const q = query(collection(db, 'businesses', businessId, 'inventory'), where("name", "==", action.itemName));
-      const querySnapshot = await getDocs(q);
+      if (!action.itemName) continue;
       
-      if (!querySnapshot.empty) {
-        const itemDoc = querySnapshot.docs[0];
-        const itemRef = doc(db, 'businesses', businessId, 'inventory', itemDoc.id);
-        const currentQty = itemDoc.data().quantity || 0;
-        const amount = Number(action.amount) || 0;
-        const adjustment = action.action === 'Stock In' ? amount : -amount;
-        const newQty = Math.max(0, currentQty + adjustment);
-        
-        await setDoc(itemRef, {
-          quantity: newQty,
+      const itemNameNormalized = action.itemName.trim();
+      const amount = Number(action.amount) || 0;
+      const adjustment = action.action === 'Stock In' ? amount : -amount;
+
+      // 1. Update CLINIC Inventory
+      const clinicQ = query(collection(db, 'businesses', businessId, 'inventory'), where("name", "==", itemNameNormalized));
+      const clinicSnap = await getDocs(clinicQ);
+      
+      if (!clinicSnap.empty) {
+        await updateDoc(doc(db, 'businesses', businessId, 'inventory', clinicSnap.docs[0].id), {
+          quantity: increment(adjustment),
           lastPatient: data.patientName,
           updatedAt: serverTimestamp()
-        }, { merge: true });
+        });
+      }
+
+      // 2. Update SUPPLIER Inventory (The one fulfilling the request)
+      // For a supplier, fulfillment usually means their stock goes DOWN (negative adjustment of the 'amount')
+      const supplierId = currentUser.uid;
+      const supplierQ = query(collection(db, 'businesses', supplierId, 'inventory'), where("name", "==", itemNameNormalized));
+      const supplierSnap = await getDocs(supplierQ);
+      
+      if (!supplierSnap.empty) {
+        // Supplier's stock always goes DOWN by the amount requested
+        await updateDoc(doc(db, 'businesses', supplierId, 'inventory', supplierSnap.docs[0].id), {
+          quantity: increment(-amount), 
+          updatedAt: serverTimestamp()
+        });
       }
     }
 
     await setDoc(requestRef, {
       status: 'accepted',
-      acceptedAt: serverTimestamp()
+      acceptedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      supplierId: currentUser.uid,
+      supplierName: currentUser.displayName || currentUser.email || 'Supplier'
     }, { merge: true });
   }
   

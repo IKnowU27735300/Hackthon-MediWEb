@@ -1,5 +1,4 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -90,7 +89,6 @@ service cloud.firestore {
       // CONTACTS (Patient records)
       match /contacts/{contactId} {
         // Staff can read/write; Patients can read/create (needed for duplicate checking in intake form)
-        // Note: We allow all authenticated users or unauthenticated users to read/create to avoid "Authenticated Patient" lockouts
         allow read: if true; 
         allow create: if true;
         allow update: if isClinicalStaff(uid);
@@ -98,7 +96,7 @@ service cloud.firestore {
 
         // Private sub-document (medical reports, sensitive notes)
         match /private/{docId} {
-          // Assistants need read access for the Case Review modal (fetchPatientContext)
+          // Assistants need read access for the Case Review modal
           allow read: if isClinicalStaff(uid);
           // Only the doctor can write clinical reports
           allow write: if isOwner(uid);
@@ -109,16 +107,15 @@ service cloud.firestore {
       match /inventory/{itemId} {
         // All clinical staff + suppliers can read inventory
         allow read: if isClinicalStaff(uid) || isSupplier();
-        // Clinical staff AND suppliers can write inventory (suppliers restock via Add Item / Upload)
+        // Clinical staff AND suppliers can write inventory
         allow create, update: if isClinicalStaff(uid) || isSupplier();
         allow delete: if isOwner(uid);
       }
 
       // STOCK HISTORY (prescription / supply requests)
       match /stock_history/{historyId} {
-        // Doctor sees all; assistant sees only their assigned records; supplier sees assigned OR pending requests
-        allow read: if isOwner(uid)
-          || assistantBelongsToClinic(uid)
+        // Doctor sees all; assistant sees all in clinic; supplier sees assigned OR pending requests
+        allow read: if isClinicalStaff(uid)
           || (isSupplier() && (resource.data.supplierId == request.auth.uid || resource.data.status == 'pending'));
 
         // Doctor + assistant can create stock logs
@@ -165,6 +162,20 @@ service cloud.firestore {
           allow update, delete: if isOwner(uid);
         }
       }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // COLLECTION GROUPS (Queries across multiple clinics)
+    // ─────────────────────────────────────────────────────────────────
+    
+    // Suppliers need to search across all business/stock_history subcollections
+    match /{path=**}/stock_history/{historyId} {
+      allow read: if isAuth() && (
+        resource.data.supplierId == request.auth.uid || 
+        resource.data.status == 'pending' ||
+        // Also allow clinical staff to read their own records via collection group if needed
+        resource.data.assignedAssistantId == request.auth.uid
+      );
     }
 
     // ─────────────────────────────────────────────────────────────────

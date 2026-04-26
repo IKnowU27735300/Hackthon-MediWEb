@@ -130,14 +130,15 @@ export default function PatientReportPage() {
     setIsLoggingStock(true);
     try {
       const validEntries = stockEntries.filter(e => e.itemName);
-      await logStockActions(
-          businessId, 
-          validEntries.map(e => ({...e, action: 'Stock Out', amount: Number(e.amount)})),
-          patient?.name || 'Patient',
-          patient?.email,
-          selectedSupplier,
-          report // Pass the clinical notes as prescriptionNotes
-      );
+      await logStockActions(businessId, {
+        patientName: patient.name,
+        patientEmail: patient.email,
+        actions: validEntries.map(e => ({...e, action: 'Stock Out', amount: Number(e.amount)})),
+        prescriptionNotes: report,
+        supplierId: selectedSupplier || null,
+        assignedAssistantId: selectedAssistant || null,
+        sharedWithAssistant: !!selectedAssistant
+      });
       setStockStatus('Request sent successfully');
       setStockEntries([{ itemName: '', amount: 1 }]);
       setSelectedSupplier('');
@@ -177,6 +178,18 @@ export default function PatientReportPage() {
              assignedAssistantId: selectedAssistant,
              updatedAt: serverTimestamp()
            })));
+        }
+
+        // 3. Update All History Records to be visible to Assistant
+        const historyRef = collection(db, 'businesses', businessId, 'stock_history');
+        const histQ = query(historyRef, where("patientEmail", "==", patient.email));
+        const histSnap = await getDocs(histQ);
+        if (!histSnap.empty) {
+          await Promise.all(histSnap.docs.map(d => updateDoc(d.ref, {
+            assignedAssistantId: selectedAssistant,
+            sharedWithAssistant: true,
+            updatedAt: serverTimestamp()
+          })));
         }
       }
       

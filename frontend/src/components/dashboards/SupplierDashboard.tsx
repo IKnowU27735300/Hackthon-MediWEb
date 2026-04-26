@@ -28,11 +28,12 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
   };
 
   const pendingRequests = (displayStats.all_history || []).filter((log: any) => 
-    log.supplierId === user?.uid && log.status === 'pending'
+    (log.supplierId === user?.uid || (log.status === 'pending' && !log.supplierId)) && 
+    log.status === 'pending'
   );
 
   const completedRequests = (displayStats.all_history || []).filter((log: any) => 
-    log.supplierId === user?.uid && (log.status === 'completed' || log.status === 'accepted')
+    log.supplierId === user?.uid && (log.status === 'completed' || log.status === 'accepted' || log.status === 'dispatched')
   );
 
   const handleAcceptRequest = async (requestId: string, clinicId?: string) => {
