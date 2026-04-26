@@ -6,6 +6,7 @@ import {
   Mail, 
   Lock, 
   ArrowRight, 
+  ArrowLeft,
   Chrome,
   AlertCircle,
   Loader2,
@@ -153,9 +154,10 @@ export default function LoginPage() {
       >
         <Link 
           href="/" 
-          className="absolute -top-12 left-0 flex items-center gap-2 text-white/40 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest"
+          className="absolute -top-16 left-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all text-[10px] uppercase font-bold tracking-widest backdrop-blur-sm group"
         >
-          <ArrowRight className="rotate-180" size={16} /> Back to Home
+          <ArrowLeft className="group-hover:-translate-x-1 transition-transform" size={14} /> 
+          Back to Home
         </Link>
 
         <div className="text-center mb-8">

@@ -7,6 +7,7 @@ import {
   Lock, 
   User,
   ArrowRight, 
+  ArrowLeft,
   AlertCircle,
   Loader2
 } from 'lucide-react';
@@ -53,8 +54,15 @@ export default function SignupPage() {
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full"
+        className="max-w-md w-full relative"
       >
+        <Link 
+          href="/" 
+          className="absolute -top-16 left-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all text-[10px] uppercase font-bold tracking-widest backdrop-blur-sm group"
+        >
+          <ArrowLeft className="group-hover:-translate-x-1 transition-transform" size={14} /> 
+          Back to Home
+        </Link>
         <div className="text-center mb-10">
           <div className="w-16 h-16 bg-primary-600 rounded-2xl mx-auto mb-6 flex items-center justify-center font-bold text-2xl shadow-lg shadow-primary-900/40">
             M

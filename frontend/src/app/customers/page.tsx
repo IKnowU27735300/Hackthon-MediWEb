@@ -155,7 +155,11 @@ function PatientsPageContent() {
     const patientName = activePatient.name || activePatient.customerName || activePatient.displayName || "Unknown Patient";
 
     try {
-      await logStockActions(businessId!, validEntries, patientName);
+      await logStockActions(businessId!, {
+        actions: validEntries.map(e => ({...e, action: 'Stock Out', amount: Number(e.amount)})),
+        patientName,
+        patientEmail: activePatient?.email || activePatient?.customerEmail
+      });
       setStockEntries([{ itemName: '', duration: '', amount: '' }]);
       alert("Stock logged and inventory updated!");
       setShowStockModal(false);

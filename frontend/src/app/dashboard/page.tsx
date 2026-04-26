@@ -168,16 +168,15 @@ export default function Dashboard() {
     if (!businessId || !activePatient) return;
     setIsSubmitting(true);
     try {
-      await logStockActions(
-        businessId!, 
-        stockEntries.map(e => ({...e, action: 'Stock Out', amount: Number(e.amount)})),
-        activePatient?.name || activePatient?.customerName || 'Patient',
-        activePatient?.email || activePatient?.customerEmail,
-        selectedSupplier,
+      await logStockActions(businessId!, {
+        actions: stockEntries.map(e => ({...e, action: 'Stock Out', amount: Number(e.amount)})),
+        patientName: activePatient?.name || activePatient?.customerName || 'Patient',
+        patientEmail: activePatient?.email || activePatient?.customerEmail,
+        supplierId: selectedSupplier,
         prescriptionNotes,
-        selectedAssistant,
-        user?.uid
-      );
+        assignedAssistantId: selectedAssistant,
+        doctorId: user?.uid
+      });
       const targetMsg = selectedAssistant && selectedSupplier 
         ? "Prescription shared with assistant and supplier." 
         : selectedAssistant 
@@ -252,17 +251,15 @@ export default function Dashboard() {
     if (!inventoryForm.itemName || !businessId) return;
     setIsSubmitting(true);
     try {
-      await logStockActions(
-        businessId, 
-        [{
+      await logStockActions(businessId!, {
+        actions: [{
           itemName: inventoryForm.itemName,
           amount: inventoryForm.quantity,
           action: inventoryForm.type === 'add' ? 'Stock In' : 'Stock Out'
         }],
-        'Manual Log',
-        undefined,
-        selectedSupplier
-      );
+        patientName: 'Manual Log',
+        supplierId: selectedSupplier
+      });
       showSuccess("Inventory level updated.");
       setInventoryForm({ itemName: '', quantity: 0, type: 'add' });
       setSelectedSupplier('');

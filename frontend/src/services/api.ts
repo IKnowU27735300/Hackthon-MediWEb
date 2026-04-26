@@ -627,11 +627,11 @@ export async function updateInventoryItem(businessId: string, itemId: string, da
 }
 export async function logStockActions(businessId: string, data: any) {
   try {
-    const { patientName, patientEmail, actions, prescriptionNotes, supplierId } = data;
+    const { patientName, patientEmail, actions, prescriptionNotes, supplierId, doctorId } = data;
     
     // 1. Resolve Assistant Visibility
     let finalAssistantId = data.assignedAssistantId;
-    let sharedWithAssistant = data.sharedWithAssistant ?? false;
+    let sharedWithAssistant = data.sharedWithAssistant ?? (!!finalAssistantId);
 
     if (!finalAssistantId && patientEmail) {
       // If not passed explicitly, try to fetch from existing patient record
@@ -693,6 +693,7 @@ export async function logStockActions(businessId: string, data: any) {
       assignedAssistantId: finalAssistantId,
       sharedWithAssistant: sharedWithAssistant,
       supplierId: supplierId || null,
+      doctorId: doctorId || null,
       status: supplierId ? 'pending' : 'accepted', // If a supplier is selected, it's a request
       items: actions,
       prescriptionNotes: prescriptionNotes || '',
@@ -756,6 +757,15 @@ export async function acceptStockRequest(businessId: string, requestId: string) 
         // Supplier's stock always goes DOWN by the amount requested
         await updateDoc(doc(db, 'businesses', supplierId, 'inventory', supplierSnap.docs[0].id), {
           quantity: increment(-amount), 
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // Create the item for the supplier if it doesn't exist, starting at negative (dispatched)
+        await addDoc(collection(db, 'businesses', supplierId, 'inventory'), {
+          name: itemNameNormalized,
+          quantity: -amount,
+          threshold: 5,
+          category: 'Medical',
           updatedAt: serverTimestamp()
         });
       }
