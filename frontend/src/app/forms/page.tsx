@@ -244,10 +244,10 @@ export default function FormsPage() {
                       ) : (role === 'assistant' && form.assignedToAssistant) ? (
                         <button 
                           disabled={caseLoading}
-                          onClick={() => handleAssistantReview(form, true)}
+                          onClick={() => handleViewCase(form)}
                           className="flex items-center gap-2 text-primary-400 hover:text-primary-300 text-sm font-bold transition-all hover:translate-x-1"
                         >
-                          Submit <ChevronRight size={14} />
+                          Review & Submit <ChevronRight size={14} />
                         </button>
                       ) : (
                         <button 

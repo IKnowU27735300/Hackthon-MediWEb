@@ -220,13 +220,12 @@ export default function LoginPage() {
 
             <p className="mt-4 text-center text-xs text-muted">
               Don't have an account?{' '}
-              <button 
-                type="button"
-                onClick={handleSignupClick}
+              <Link 
+                href="/signup"
                 className="text-primary-500 hover:text-primary-400 font-bold transition-colors underline decoration-primary-500/30 underline-offset-4"
               >
                 Sign up
-              </button>
+              </Link>
             </p>
           </form>
 

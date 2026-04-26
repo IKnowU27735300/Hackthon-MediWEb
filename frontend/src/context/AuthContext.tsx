@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             profileLocation = data.location || null;
             profileComplete = !!data.profileCompleted;
             
-            if (userRole === 'assistant' && data.businessId) {
+            if ((userRole === 'assistant' || userRole === 'supplier') && data.businessId) {
               userBusinessId = data.businessId;
             }
           }

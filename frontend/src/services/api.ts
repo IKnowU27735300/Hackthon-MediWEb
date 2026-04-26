@@ -630,6 +630,8 @@ export async function logStockActions(businessId: string, data: any) {
       }
     }
 
+    const isRequest = !!supplierId || actions.some((a: any) => a.action === 'Stock In');
+
     for (const action of actions) {
       if (!action.itemName) continue;
 
@@ -658,7 +660,6 @@ export async function logStockActions(businessId: string, data: any) {
 
       const amount = Number(action.amount) || 0;
       const adjustment = action.action === 'Stock In' ? amount : -amount;
-      const newQty = Math.max(0, currentQty + adjustment);
 
       // Only update inventory immediately if NOT a supplier request
       if (!supplierId) {
@@ -679,7 +680,7 @@ export async function logStockActions(businessId: string, data: any) {
       sharedWithAssistant: sharedWithAssistant,
       supplierId: supplierId || null,
       doctorId: doctorId || null,
-      status: supplierId ? 'pending' : 'accepted', // If a supplier is selected, it's a request
+      status: isRequest ? 'pending' : 'accepted',
       items: actions,
       prescriptionNotes: prescriptionNotes || '',
       createdAt: serverTimestamp()
