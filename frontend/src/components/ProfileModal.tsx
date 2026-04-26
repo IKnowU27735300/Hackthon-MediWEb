@@ -16,7 +16,7 @@ import {
 import { updateDoctorProfile } from '@/services/profile';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDocs, collection, query, where } from 'firebase/firestore';
 
 interface ProfileModalProps {
   businessId?: string;
@@ -34,10 +34,13 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
     email: '',
     password: '',
     confirmPassword: '',
+    linkedClinicId: '',
     role: (role || 'doctor') as 'doctor' | 'assistant' | 'supplier'
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clinics, setClinics] = useState<any[]>([]);
+  const [loadingClinics, setLoadingClinics] = useState(false);
   
   const isSocialSignup = !!auth.currentUser && isSignup;
 
@@ -47,6 +50,25 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
       setFormData(prev => ({ ...prev, email: auth.currentUser?.email || '' }));
     }
   }, [isSocialSignup]);
+
+  React.useEffect(() => {
+    if (formData.role === 'assistant' && isSignup) {
+      const fetchClinics = async () => {
+        setLoadingClinics(true);
+        try {
+          const q = query(collection(db, 'businesses'), where('role', '==', 'doctor'));
+          const snapshot = await getDocs(q);
+          const clinicsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          setClinics(clinicsData);
+        } catch (err) {
+          console.error("Error fetching clinics:", err);
+        } finally {
+          setLoadingClinics(false);
+        }
+      };
+      fetchClinics();
+    }
+  }, [formData.role, isSignup]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +101,7 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
           // Only save phone/location if relevant for role
           ...(formData.role === 'doctor' && { businessPhone: formData.phone, location: formData.location }),
           ...(formData.role === 'supplier' && { location: formData.location }),
+          ...(formData.role === 'assistant' && { location: formData.location, businessId: formData.linkedClinicId }),
           email: email,
           profileCompleted: true,
           createdAt: serverTimestamp(),
@@ -270,10 +293,10 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
             </>
           )}
           
-          {(formData.role === 'doctor' || formData.role === 'supplier') && (
+          {(formData.role === 'doctor' || formData.role === 'supplier' || formData.role === 'assistant') && (
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">
-                 {formData.role === 'doctor' ? 'Clinic Location' : 'Supplier Location'}
+                 {formData.role === 'doctor' ? 'Clinic Location' : formData.role === 'supplier' ? 'Supplier Location' : 'Your Location'}
               </label>
               <div className="relative">
                 <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
@@ -284,6 +307,34 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
                   placeholder="City, State"
                   className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-primary-500 transition-all text-xs"
                 />
+              </div>
+            </div>
+          )}
+
+          {formData.role === 'assistant' && isSignup && (
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">
+                 Select Clinic
+              </label>
+              <div className="relative">
+                <select
+                  required
+                  value={formData.linkedClinicId}
+                  onChange={(e) => setFormData({...formData, linkedClinicId: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-primary-500 transition-all text-xs appearance-none"
+                >
+                  <option value="" disabled className="bg-gray-900 text-white/50">Choose a clinic...</option>
+                  {clinics
+                    .filter(c => !formData.location || c.location?.toLowerCase().includes(formData.location.toLowerCase()))
+                    .map(c => (
+                      <option key={c.id} value={c.id} className="bg-gray-900 text-white">
+                        {c.displayName || 'Unnamed Clinic'} ({c.location || 'No location'})
+                      </option>
+                  ))}
+                </select>
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                  <ArrowRight size={14} className="text-white/20 rotate-90" />
+                </div>
               </div>
             </div>
           )}
