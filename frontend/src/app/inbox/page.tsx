@@ -20,7 +20,9 @@ import {
   deleteChat,
   subscribeToPatientInbox,
   subscribeToPatientMessages,
-  sendPatientMessage
+  sendPatientMessage,
+  subscribeToInternalMessages,
+  sendInternalMessage
 } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
