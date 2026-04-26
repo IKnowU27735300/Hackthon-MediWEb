@@ -104,35 +104,50 @@ export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
             </div>
           </div>
 
-          <div className="glass-card p-6">
-            <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-              <Package className="text-emerald-400" /> 
-              Supplier Responses
-            </h3>
-            <div className="space-y-4">
-              {recentSupplierResponses.length > 0 ? (
-                recentSupplierResponses.slice(0, 5).map((log: any, idx: number) => (
-                  <div key={log.id || idx} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5 hover:border-white/10 transition-all">
-                    <div>
-                      <div className="font-bold">{log.patientName}</div>
-                      <div className="text-xs text-white/50">{log.items?.map((i:any) => `${i.amount}x ${i.itemName}`).join(', ')}</div>
-                    </div>
-                    <div className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${
-                      log.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 
-                      log.status === 'pending' ? 'bg-amber-500/20 text-amber-400' :
-                      'bg-red-500/20 text-red-400'
-                    }`}>
-                      {log.status === 'completed' ? 'Accepted' : log.status === 'pending' ? 'Pending Supplier' : 'Rejected'}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-10 text-white/30 italic bg-white/5 rounded-2xl">
-                  No recent supplier responses.
-                </div>
-              )}
-            </div>
-          </div>
+           <div className="glass-card p-6">
+             <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+               <Package className="text-emerald-400" /> 
+               Supplier Responses & Prescriptions
+             </h3>
+             <div className="space-y-4">
+               {recentSupplierResponses.length > 0 ? (
+                 recentSupplierResponses
+                   .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+                   .slice(0, 10)
+                   .map((log: any, idx: number) => (
+                   <div key={log.id || idx} className="p-4 bg-white/5 rounded-xl border border-white/5 hover:border-white/10 transition-all">
+                     <div className="flex items-center justify-between mb-2">
+                       <div className="font-bold text-emerald-400">{log.patientName}</div>
+                       <div className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${
+                         log.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 
+                         log.status === 'pending' ? 'bg-amber-500/20 text-amber-400' :
+                         'bg-red-500/20 text-red-400'
+                       }`}>
+                         {log.status === 'completed' ? 'Accepted' : log.status === 'pending' ? 'Pending Supplier' : 'Rejected'}
+                       </div>
+                     </div>
+                     <div className="text-xs text-white/50 mb-3 flex flex-wrap gap-2">
+                       {log.items?.map((i:any, entryIdx: number) => (
+                         <span key={entryIdx} className="bg-white/5 px-2 py-1 rounded-md border border-white/5">
+                           {i.amount}x {i.itemName}
+                         </span>
+                       ))}
+                     </div>
+                     {log.prescriptionNotes && (
+                       <div className="mt-2 p-3 bg-black/40 rounded-lg border border-emerald-500/10">
+                         <div className="text-[10px] text-white/30 uppercase font-bold mb-1 tracking-widest">Doctor's Prescription</div>
+                         <div className="text-xs text-white/70 italic leading-relaxed">"{log.prescriptionNotes}"</div>
+                       </div>
+                     )}
+                   </div>
+                 ))
+               ) : (
+                 <div className="text-center py-10 text-white/30 italic bg-white/5 rounded-2xl">
+                   No recent supplier responses.
+                 </div>
+               )}
+             </div>
+           </div>
         </div>
 
         <div className="space-y-6">

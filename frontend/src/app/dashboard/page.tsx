@@ -175,7 +175,8 @@ export default function Dashboard() {
         activePatient?.email || activePatient?.customerEmail,
         selectedSupplier,
         prescriptionNotes,
-        selectedAssistant
+        selectedAssistant,
+        user?.uid
       );
       const targetMsg = selectedAssistant && selectedSupplier 
         ? "Prescription shared with assistant and supplier." 

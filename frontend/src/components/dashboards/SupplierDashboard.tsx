@@ -31,10 +31,11 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
     log.supplierId === user?.uid && log.status === 'pending'
   );
 
-  const handleAcceptRequest = async (requestId: string) => {
-    if (!businessId) return;
+  const handleAcceptRequest = async (requestId: string, clinicId?: string) => {
+    const targetBusinessId = clinicId || businessId;
+    if (!targetBusinessId) return;
     try {
-      await acceptStockRequest(businessId, requestId);
+      await acceptStockRequest(targetBusinessId, requestId);
       alert("Request accepted and inventory updated.");
     } catch (err) {
       console.error(err);
@@ -42,10 +43,11 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
     }
   };
 
-  const handleRejectRequest = async (requestId: string) => {
-    if (!businessId) return;
+  const handleRejectRequest = async (requestId: string, clinicId?: string) => {
+    const targetBusinessId = clinicId || businessId;
+    if (!targetBusinessId) return;
     try {
-      await rejectStockRequest(businessId, requestId);
+      await rejectStockRequest(targetBusinessId, requestId);
       alert("Request rejected.");
     } catch (err) {
       console.error(err);
@@ -184,13 +186,13 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
                 </div>
                 <div className="flex gap-2">
                   <button 
-                    onClick={() => handleRejectRequest(request.id)}
+                    onClick={() => handleRejectRequest(request.id, request.businessId)}
                     className="w-1/3 py-2.5 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1 border border-red-500/30"
                   >
                     Reject
                   </button>
                   <button 
-                    onClick={() => handleAcceptRequest(request.id)}
+                    onClick={() => handleAcceptRequest(request.id, request.businessId)}
                     className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
                   >
                     <CheckCircle size={14} /> Accept & Dispatch

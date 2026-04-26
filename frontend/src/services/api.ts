@@ -106,8 +106,10 @@ export function subscribeToDashboardSummary(businessId: string, callback: (data:
       : contactsRef;
 
     const historyQuery = (role === 'assistant' && userId)
-      ? query(historyRef, where("assignedAssistantId", "==", userId))
-      : historyRef;
+      ? query(historyRef, where("assignedAssistantId", "in", [userId, null]))
+      : (role === 'doctor' && userId && userId !== businessId)
+        ? query(historyRef, where("createdById", "==", userId))
+        : historyRef;
 
     unsubBookings = onSnapshot(bookingsQuery, (snap) => {
       state.bookings = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
@@ -133,7 +135,11 @@ export function subscribeToDashboardSummary(businessId: string, callback: (data:
      );
      
      unsubHistory = onSnapshot(historyQuery, (snap) => {
-       state.history = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
+       state.history = snap.docs.map(doc => ({ 
+         id: doc.id, 
+         businessId: doc.ref.parent.parent?.id, // Extract clinic ID from path
+         ...doc.data() 
+       })) as any;
        emit();
      }, (err) => handleError('history_group', err));
   }
@@ -607,7 +613,7 @@ export async function updateInventoryItem(businessId: string, itemId: string, da
   }, { merge: true });
   return { status: 'success' };
 }
-export async function logStockActions(businessId: string, actions: any[], patientName: string, patientEmail?: string, supplierId?: string, prescriptionNotes?: string, assistantId?: string) {
+export async function logStockActions(businessId: string, actions: any[], patientName: string, patientEmail?: string, supplierId?: string, prescriptionNotes?: string, assistantId?: string, createdById?: string) {
   if (!businessId) throw new Error("Missing Clinical Context (BusinessID)");
   if (!actions || actions.length === 0) return { status: 'skipped' };
 
@@ -667,6 +673,7 @@ export async function logStockActions(businessId: string, actions: any[], patien
       patientName,
       patientEmail: patientEmail || null,
       assignedAssistantId: finalAssistantId,
+      createdById: createdById || null,
       supplierId: supplierId || null,
       status: supplierId ? 'pending' : 'completed', // If a supplier is selected, it's a request
       items: actions,
