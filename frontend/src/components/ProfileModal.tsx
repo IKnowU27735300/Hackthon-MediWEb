@@ -52,7 +52,7 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
   }, [isSocialSignup]);
 
   React.useEffect(() => {
-    if (formData.role === 'assistant' && isSignup) {
+    if ((formData.role === 'assistant' || formData.role === 'supplier') && isSignup) {
       const fetchClinics = async () => {
         setLoadingClinics(true);
         try {
@@ -100,7 +100,7 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
           displayName: formData.publicName,
           // Only save phone/location if relevant for role
           ...(formData.role === 'doctor' && { businessPhone: formData.phone, location: formData.location }),
-          ...(formData.role === 'supplier' && { location: formData.location }),
+          ...(formData.role === 'supplier' && { location: formData.location, businessId: formData.linkedClinicId }),
           ...(formData.role === 'assistant' && { location: formData.location, businessId: formData.linkedClinicId }),
           email: email,
           profileCompleted: true,
@@ -311,7 +311,7 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
             </div>
           )}
 
-          {formData.role === 'assistant' && isSignup && (
+          {(formData.role === 'assistant' || formData.role === 'supplier') && isSignup && (
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">
                  Select Clinic
