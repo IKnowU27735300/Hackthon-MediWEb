@@ -5,6 +5,8 @@ export async function updateDoctorProfile(businessId: string, profileData: {
   publicName: string;
   phone: string;
   location: string;
+  doctorName?: string;
+  licenseNumber?: string;
 }) {
   try {
     const businessRef = doc(db, 'businesses', businessId);
@@ -12,6 +14,8 @@ export async function updateDoctorProfile(businessId: string, profileData: {
       displayName: profileData.publicName,
       businessPhone: profileData.phone,
       location: profileData.location,
+      ...(profileData.doctorName && { doctorName: profileData.doctorName }),
+      ...(profileData.licenseNumber && { licenseNumber: profileData.licenseNumber }),
       profileCompleted: true,
       updatedAt: serverTimestamp()
     });

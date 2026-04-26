@@ -35,7 +35,9 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
     password: '',
     confirmPassword: '',
     linkedClinicId: '',
-    role: (role || 'doctor') as 'doctor' | 'assistant' | 'supplier'
+    role: (role || 'doctor') as 'doctor' | 'assistant' | 'supplier',
+    doctorName: '',
+    licenseNumber: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +101,12 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
           role: formData.role,
           displayName: formData.publicName,
           // Only save phone/location if relevant for role
-          ...(formData.role === 'doctor' && { businessPhone: formData.phone, location: formData.location }),
+          ...(formData.role === 'doctor' && { 
+            businessPhone: formData.phone, 
+            location: formData.location,
+            doctorName: formData.doctorName,
+            licenseNumber: formData.licenseNumber
+          }),
           ...(formData.role === 'supplier' && { location: formData.location, businessId: formData.linkedClinicId }),
           ...(formData.role === 'assistant' && { location: formData.location, businessId: formData.linkedClinicId }),
           email: email,
@@ -196,6 +203,42 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-center gap-2 mb-2">
               <AlertCircle size={14} />
               {error}
+            </div>
+          )}
+
+          {formData.role === 'doctor' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">
+                  Doctor's Name
+                </label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                  <input 
+                    required
+                    value={formData.doctorName}
+                    onChange={(e) => setFormData({...formData, doctorName: e.target.value})}
+                    placeholder="Dr. Full Name"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-primary-500 transition-all text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">
+                  License Number
+                </label>
+                <div className="relative">
+                  <AlertCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                  <input 
+                    required
+                    value={formData.licenseNumber}
+                    onChange={(e) => setFormData({...formData, licenseNumber: e.target.value})}
+                    placeholder="Medical License No."
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-primary-500 transition-all text-xs"
+                  />
+                </div>
+              </div>
             </div>
           )}
 
