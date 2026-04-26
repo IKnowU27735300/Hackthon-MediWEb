@@ -11,7 +11,10 @@ import {
   Timestamp,
   onSnapshot,
   deleteDoc,
-  updateDoc
+  updateDoc,
+  collectionGroup,
+  orderBy,
+  limit
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -120,15 +123,19 @@ export function subscribeToDashboardSummary(businessId: string, callback: (data:
       state.history = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
       emit();
     }, (err) => handleError('history', err));
-  } else if (role === 'supplier') {
-     // Suppliers might need history of stock usage?
-     // Current rules allow history read if isDoctor or assignedAssistant.
-     // If supplier is owner (userId === businessId), they pass isDoctor check.
-     // Suppliers need history of stock usage regarding of ownership
-     unsubHistory = onSnapshot(historyRef, (snap) => {
+  } else if (role === 'supplier' && userId) {
+     // Suppliers need to see prescriptions across all clinics where they are assigned
+     const historyQuery = query(
+       collectionGroup(db, 'stock_history'),
+       where('supplierId', '==', userId),
+       orderBy('createdAt', 'desc'),
+       limit(20)
+     );
+     
+     unsubHistory = onSnapshot(historyQuery, (snap) => {
        state.history = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
        emit();
-     }, (err) => handleError('history', err));
+     }, (err) => handleError('history_group', err));
   }
 
   return () => {
@@ -600,18 +607,18 @@ export async function updateInventoryItem(businessId: string, itemId: string, da
   }, { merge: true });
   return { status: 'success' };
 }
-export async function logStockActions(businessId: string, actions: any[], patientName: string, patientEmail?: string, supplierId?: string, prescriptionNotes?: string) {
+export async function logStockActions(businessId: string, actions: any[], patientName: string, patientEmail?: string, supplierId?: string, prescriptionNotes?: string, assistantId?: string) {
   if (!businessId) throw new Error("Missing Clinical Context (BusinessID)");
   if (!actions || actions.length === 0) return { status: 'skipped' };
 
   try {
     // Determine if this patient is currently assigned to an assistant
-    let assistantId = null;
-    if (patientEmail) {
+    let finalAssistantId = assistantId || null;
+    if (!finalAssistantId && patientEmail) {
       const q = query(collection(db, 'businesses', businessId, 'contacts'), where("email", "==", patientEmail));
       const snap = await getDocs(q);
       if (!snap.empty) {
-        assistantId = snap.docs[0].data().assignedAssistantId || null;
+        finalAssistantId = snap.docs[0].data().assignedAssistantId || null;
       }
     }
 
@@ -659,7 +666,7 @@ export async function logStockActions(businessId: string, actions: any[], patien
     await addDoc(historyRef, {
       patientName,
       patientEmail: patientEmail || null,
-      assignedAssistantId: assistantId,
+      assignedAssistantId: finalAssistantId,
       supplierId: supplierId || null,
       status: supplierId ? 'pending' : 'completed', // If a supplier is selected, it's a request
       items: actions,

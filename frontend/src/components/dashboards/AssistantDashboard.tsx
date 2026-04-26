@@ -30,7 +30,7 @@ export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
   ) || [];
 
   const recentSupplierResponses = (displayStats.all_history || []).filter((log: any) => 
-    log.status === 'completed' || log.status === 'rejected'
+    log.status === 'pending' || log.status === 'completed' || log.status === 'rejected'
   );
 
   const router = useRouter();
@@ -117,8 +117,12 @@ export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
                       <div className="font-bold">{log.patientName}</div>
                       <div className="text-xs text-white/50">{log.items?.map((i:any) => `${i.amount}x ${i.itemName}`).join(', ')}</div>
                     </div>
-                    <div className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${log.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                      {log.status === 'completed' ? 'Accepted - Ready for Pickup' : 'Rejected'}
+                    <div className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${
+                      log.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 
+                      log.status === 'pending' ? 'bg-amber-500/20 text-amber-400' :
+                      'bg-red-500/20 text-red-400'
+                    }`}>
+                      {log.status === 'completed' ? 'Accepted' : log.status === 'pending' ? 'Pending Supplier' : 'Rejected'}
                     </div>
                   </div>
                 ))

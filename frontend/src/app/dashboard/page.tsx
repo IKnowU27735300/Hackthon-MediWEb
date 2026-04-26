@@ -75,6 +75,7 @@ export default function Dashboard() {
   const [repeatHistory, setRepeatHistory] = useState<any>(null);
   const [prescriptionNotes, setPrescriptionNotes] = useState('');
   const [fetchingRepeat, setFetchingRepeat] = useState(false);
+  const [selectedAssistant, setSelectedAssistant] = useState<string>('');
 
   // Greeting logic
   useEffect(() => {
@@ -173,12 +174,21 @@ export default function Dashboard() {
         activePatient?.name || activePatient?.customerName || 'Patient',
         activePatient?.email || activePatient?.customerEmail,
         selectedSupplier,
-        prescriptionNotes
+        prescriptionNotes,
+        selectedAssistant
       );
-      showSuccess("Medical resources logged successfully.");
+      const targetMsg = selectedAssistant && selectedSupplier 
+        ? "Prescription shared with assistant and supplier." 
+        : selectedAssistant 
+          ? "Prescription assigned to assistant."
+          : selectedSupplier
+            ? "Resource request sent to supplier."
+            : "Medical resources logged successfully.";
+      showSuccess(targetMsg);
       setStockEntries([{ itemName: '', duration: '', amount: '' }]);
       setSelectedSupplier('');
       setPrescriptionNotes('');
+      setSelectedAssistant('');
       setShowStockModal(false);
     } catch (err: any) {
       console.error("Stock log error:", err);
@@ -329,6 +339,13 @@ export default function Dashboard() {
             onAction={() => setShowModal(true)} 
             onLogMedical={(booking: any) => {
               setActivePatient(booking);
+              setShowStockModal(true);
+            }}
+            onSendTask={(assistant: any) => {
+              setSelectedAssistant(assistant.id || assistant.uid);
+              if (displayStats.all_bookings?.length > 0) {
+                setActivePatient(displayStats.all_bookings[0]);
+              }
               setShowStockModal(true);
             }}
           />
@@ -773,7 +790,10 @@ export default function Dashboard() {
                     </h2>
                     <p className="text-sm text-white/40 mt-1 italic">Assigning resources for: <span className="text-primary-400 font-bold not-italic">{activePatient?.name || activePatient?.customerName}</span></p>
                   </div>
-                  <button onClick={() => setShowStockModal(false)} className="p-2 text-white/40 hover:text-white transition-colors"><X size={20} /></button>
+                  <button onClick={() => {
+                    setShowStockModal(false);
+                    setSelectedAssistant('');
+                  }} className="p-2 text-white/40 hover:text-white transition-colors"><X size={20} /></button>
                 </div>
 
                 <div className="flex-1 overflow-hidden flex">
@@ -820,13 +840,25 @@ export default function Dashboard() {
                     <div className="p-4 bg-primary-500/10 border border-primary-500/20 rounded-2xl mb-4">
                       <label className="text-[10px] text-primary-400 uppercase font-bold mb-2 block">Choose Supplier</label>
                       <select 
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-primary-500 outline-none"
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-primary-500 outline-none mb-4"
                         value={selectedSupplier}
                         onChange={(e) => setSelectedSupplier(e.target.value)}
                       >
                         <option value="">Direct Log (No Supplier)</option>
                         {suppliers.map(s => (
                           <option key={s.id} value={s.id}>{s.displayName || s.email}</option>
+                        ))}
+                      </select>
+
+                      <label className="text-[10px] text-primary-400 uppercase font-bold mb-2 block">Assign Assistant</label>
+                      <select 
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-primary-500 outline-none"
+                        value={selectedAssistant}
+                        onChange={(e) => setSelectedAssistant(e.target.value)}
+                      >
+                        <option value="">No Assignment</option>
+                        {activeStaff.filter(s => s.role === 'assistant').map(a => (
+                          <option key={a.id} value={a.id}>{a.displayName || a.email}</option>
                         ))}
                       </select>
                     </div>

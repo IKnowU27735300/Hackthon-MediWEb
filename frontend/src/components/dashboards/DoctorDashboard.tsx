@@ -24,14 +24,16 @@ export function DoctorDashboard({
   user, 
   staff,
   onAction,
-  onLogMedical
+  onLogMedical,
+  onSendTask
 }: { 
   stats: any, 
   greeting: string, 
   user: any, 
   staff?: any[],
   onAction: () => void,
-  onLogMedical?: (booking: any) => void
+  onLogMedical?: (booking: any) => void,
+  onSendTask?: (assistant: any) => void
 }) {
   const router = useRouter();
   const { businessId } = useAuth();
@@ -139,6 +141,7 @@ export function DoctorDashboard({
                     router.push(`/bookings?${params.toString()}`);
                   }}
                   onReject={() => handleRejectBooking(booking)}
+                  onLogMedical={() => onLogMedical?.(booking)}
                   onViewDetails={() => router.push('/bookings')} 
                 />
               ))
@@ -209,7 +212,10 @@ export function DoctorDashboard({
                       </div>
                     </div>
                   </div>
-                  <button className="w-full py-2 bg-white/5 hover:bg-white/10 rounded-lg text-[10px] font-extrabold uppercase tracking-widest transition-all flex items-center justify-center gap-2 text-white/40 hover:text-white">
+                  <button 
+                    onClick={() => onSendTask?.(assistant)}
+                    className="w-full py-2 bg-white/5 hover:bg-white/10 rounded-lg text-[10px] font-extrabold uppercase tracking-widest transition-all flex items-center justify-center gap-2 text-white/40 hover:text-white"
+                  >
                     Send Task <ArrowRight size={10} />
                   </button>
                 </motion.div>
