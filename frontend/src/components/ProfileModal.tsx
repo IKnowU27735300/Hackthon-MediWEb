@@ -147,6 +147,27 @@ export function ProfileModal({ businessId, isSignup, onComplete, onClose, role =
 
         <form onSubmit={handleSubmit} className="space-y-4">
 
+          {isSignup && (
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-primary-400/60 ml-1">Identity Type</label>
+              <div className="flex gap-2 p-1 bg-white/5 rounded-xl border border-white/10">
+                {(['doctor', 'assistant', 'supplier'] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setFormData({...formData, role: r})}
+                    className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${
+                      formData.role === r 
+                        ? 'bg-primary-600 text-black shadow-lg' 
+                        : 'text-white/40 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-center gap-2 mb-2">
