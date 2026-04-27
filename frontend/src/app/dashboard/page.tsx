@@ -29,7 +29,9 @@ import {
   updateInventoryItem, 
   subscribeToActiveStaff,
   logStockActions,
-  subscribeToPatientHistory
+  subscribeToPatientHistory,
+  updateBookingStatus,
+  assignFormToAssistant
 } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -177,6 +179,18 @@ export default function Dashboard() {
         assignedAssistantId: selectedAssistant,
         doctorId: user?.uid
       });
+
+      // Update booking status to reflect handover/completion
+      if (activePatient?.id) {
+        if (selectedAssistant) {
+          // If assigned to assistant, use the workflow function to set status to pending_review
+          await assignFormToAssistant(businessId!, activePatient.id, selectedAssistant);
+        } else {
+          // Otherwise mark as completed (Handover Complete)
+          await updateBookingStatus(businessId!, activePatient.id, 'completed');
+        }
+      }
+
       const targetMsg = selectedAssistant && selectedSupplier 
         ? "Prescription shared with assistant and supplier." 
         : selectedAssistant 
