@@ -102,11 +102,13 @@ export default function Dashboard() {
     if (businessId) {
        const unsubscribeStaff = subscribeToActiveStaff((staff) => {
           setActiveStaff(staff);
-          // Filter by role and match location if available
-          setSuppliers(staff.filter(s => 
-            s.role === 'supplier' && 
-            (!userLocation || !s.location || s.location.toLowerCase() === userLocation.toLowerCase())
-          ));
+          // Filter suppliers by role; show all suppliers if no location data for matching
+          const allSuppliers = staff.filter(s => s.role === 'supplier');
+          const locationFiltered = userLocation
+            ? allSuppliers.filter(s => !s.location || s.location.toLowerCase() === userLocation.toLowerCase())
+            : allSuppliers;
+          // Fallback: if location filtering removes everyone, show all suppliers
+          setSuppliers(locationFiltered.length > 0 ? locationFiltered : allSuppliers);
        });
        
        const unsubSummary = subscribeToDashboardSummary(businessId, (data) => {
@@ -849,30 +851,55 @@ export default function Dashboard() {
                       </div>
                     ))}
 
-                    <div className="p-4 bg-primary-500/10 border border-primary-500/20 rounded-2xl mb-4">
-                      <label className="text-[10px] text-primary-400 uppercase font-bold mb-2 block">Choose Supplier</label>
-                      <select 
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-primary-500 outline-none mb-4"
-                        value={selectedSupplier}
-                        onChange={(e) => setSelectedSupplier(e.target.value)}
-                      >
-                        <option value="">Direct Log (No Supplier)</option>
-                        {suppliers.map(s => (
-                          <option key={s.id} value={s.id}>{s.displayName || s.email}</option>
-                        ))}
-                      </select>
+                    <div className="p-4 bg-primary-500/10 border border-primary-500/20 rounded-2xl mb-4 space-y-4">
+                      {/* Supplier Selector */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-[10px] text-primary-400 uppercase font-bold">Send Request to Supplier</label>
+                          {suppliers.length > 0 && (
+                            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-bold uppercase">
+                              {suppliers.length} available
+                            </span>
+                          )}
+                        </div>
+                        <select 
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-primary-500 outline-none"
+                          value={selectedSupplier}
+                          onChange={(e) => setSelectedSupplier(e.target.value)}
+                        >
+                          <option value="">⚡ Direct Log (No Supplier Request)</option>
+                          {suppliers.length > 0 ? (
+                            suppliers.map(s => (
+                              <option key={s.id} value={s.id}>
+                                🏭 {s.displayName || s.businessName || s.email}
+                                {s.location ? ` — ${s.location}` : ''}
+                              </option>
+                            ))
+                          ) : (
+                            <option disabled value="__none__">No suppliers found in your network</option>
+                          )}
+                        </select>
+                        {selectedSupplier && (
+                          <p className="text-[10px] text-amber-400/70 mt-1.5 flex items-center gap-1">
+                            <span>⚠</span> A supply request will be sent to this supplier — they must accept it to fulfill.
+                          </p>
+                        )}
+                      </div>
 
-                      <label className="text-[10px] text-primary-400 uppercase font-bold mb-2 block">Assign Assistant</label>
-                      <select 
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-primary-500 outline-none"
-                        value={selectedAssistant}
-                        onChange={(e) => setSelectedAssistant(e.target.value)}
-                      >
-                        <option value="">No Assignment</option>
-                        {activeStaff.filter(s => s.role === 'assistant').map(a => (
-                          <option key={a.id} value={a.id}>{a.displayName || a.email}</option>
-                        ))}
-                      </select>
+                      {/* Assistant Selector */}
+                      <div>
+                        <label className="text-[10px] text-primary-400 uppercase font-bold mb-2 block">Assign Clinical Assistant</label>
+                        <select 
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-primary-500 outline-none"
+                          value={selectedAssistant}
+                          onChange={(e) => setSelectedAssistant(e.target.value)}
+                        >
+                          <option value="">No Assignment</option>
+                          {activeStaff.filter(s => s.role === 'assistant').map(a => (
+                            <option key={a.id} value={a.id}>👤 {a.displayName || a.email}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
                     <button onClick={addEntry} className="w-full py-3 border border-dashed border-white/20 text-white/40 rounded-xl hover:text-white hover:border-white/40 transition-all flex items-center justify-center gap-2 text-sm mb-4">
