@@ -840,6 +840,34 @@ export function subscribeToClinicalUsageLogs(
   });
 }
 
+// Called by the assistant after reviewing a supplier-accepted intake form.
+// Sets status → 'processed' on both stock_history and the clinical_usage_log entry.
+export async function submitIntakeForm(businessId: string, requestId: string, assistantId: string, assistantName: string) {
+  const requestRef = doc(db, 'businesses', businessId, 'stock_history', requestId);
+  await updateDoc(requestRef, {
+    status: 'processed',
+    processedAt: serverTimestamp(),
+    processedBy: assistantId,
+    processedByName: assistantName,
+    updatedAt: serverTimestamp()
+  });
+
+  // Also mark the corresponding clinical_usage_log as processed (match by requestId)
+  const logsQ = query(
+    collection(db, 'businesses', businessId, 'clinical_usage_logs'),
+    where('requestId', '==', requestId)
+  );
+  const logsSnap = await getDocs(logsQ);
+  for (const logDoc of logsSnap.docs) {
+    await updateDoc(doc(db, 'businesses', businessId, 'clinical_usage_logs', logDoc.id), {
+      status: 'processed',
+      processedAt: serverTimestamp(),
+      processedBy: assistantId,
+      processedByName: assistantName
+    });
+  }
+}
+
 export function subscribeToPatientHistory(businessId: string, patientName: string, callback: (logs: any[]) => void) {
   const q = query(
     collection(db, 'businesses', businessId, 'stock_history'),
