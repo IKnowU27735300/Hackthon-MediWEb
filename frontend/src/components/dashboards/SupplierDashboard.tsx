@@ -11,11 +11,13 @@ import {
   Plus,
   Clock,
   CheckCircle,
-  ShoppingBag
+  ShoppingBag,
+  Activity,
+  FileText
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { StatCard } from '../StatCard';
-import { acceptStockRequest, rejectStockRequest } from '@/services/api';
+import { acceptStockRequest, rejectStockRequest, subscribeToClinicalUsageLogs } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { AnimatePresence } from 'framer-motion';
 
@@ -26,6 +28,17 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
     all_inventory: [],
     all_history: []
   };
+
+  // Clinical usage logs state
+  const [usageLogs, setUsageLogs] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    if (!businessId) return;
+    const unsub = subscribeToClinicalUsageLogs(businessId, (logs) => {
+      setUsageLogs(logs);
+    });
+    return () => unsub();
+  }, [businessId]);
 
   const pendingRequests = (displayStats.all_history || []).filter((log: any) => 
     (log.supplierId === user?.uid || (log.status === 'pending' && !log.supplierId)) && 
@@ -92,7 +105,7 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
               <AlertTriangle size={24} />
             </div>
             <div>
-              <h4 className="font-bold">New Prescription & Supply Request</h4>
+              <h4 className="font-bold">New Prescription &amp; Supply Request</h4>
               <p className="text-sm opacity-80">Doctor prescribed medications for {latestRequest.patientName}</p>
             </div>
             <button onClick={() => setShowPopup(false)} className="ml-4 opacity-50 hover:opacity-100">
@@ -133,10 +146,10 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
           icon={<Package className="text-amber-400" />}
         />
         <StatCard 
-          title="Inbound Shipments" 
-          value="4" 
-          subtitle="Expected this week"
-          icon={<Truck className="text-blue-400" />}
+          title="Fulfilled Requests" 
+          value={usageLogs.length} 
+          subtitle="Clinical usage entries"
+          icon={<Activity className="text-emerald-400" />}
         />
         <StatCard 
           title="Expiring Items" 
@@ -203,7 +216,7 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
                     onClick={() => handleAcceptRequest(request.id, request.businessId)}
                     className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
                   >
-                    <CheckCircle size={14} /> Accept & Dispatch
+                    <CheckCircle size={14} /> Accept &amp; Dispatch
                   </button>
                 </div>
               </motion.div>
@@ -304,6 +317,80 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
         </div>
       </div>
 
+      {/* ── Clinical Usage Logs Panel ── */}
+      <div className="glass-card p-6 border-emerald-500/20 bg-emerald-500/5 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-4 opacity-5">
+          <Activity size={100} />
+        </div>
+        <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+          <Activity className="text-emerald-400" />
+          Clinical Usage Logs
+          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] px-2 py-0.5 rounded-full">
+            {usageLogs.length} entries
+          </span>
+        </h3>
+
+        {usageLogs.length === 0 ? (
+          <div className="text-center py-12 text-white/20 italic bg-white/5 rounded-2xl">
+            <FileText size={32} className="mx-auto mb-3 opacity-30" />
+            No fulfilled dispensations yet. Accepted requests will appear here.
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+            {usageLogs.map((log: any) => (
+              <motion.div
+                key={log.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-black/30 border border-white/5 rounded-2xl p-4 hover:border-emerald-500/30 transition-all"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="text-[10px] text-white/30 uppercase font-bold tracking-tighter">Patient</div>
+                    <div className="font-bold text-emerald-400">{log.patientName}</div>
+                    {log.prescriptionNotes && (
+                      <div className="text-[10px] text-white/40 italic mt-0.5 max-w-xs truncate">
+                        &ldquo;{log.prescriptionNotes}&rdquo;
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0 ml-4">
+                    <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-1">Fulfilled</div>
+                    <div className="text-[10px] text-white/30 font-mono">
+                      {log.fulfilledAt?.seconds
+                        ? new Date(log.fulfilledAt.seconds * 1000).toLocaleString()
+                        : '—'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {log.itemsDispensed?.map((item: any, i: number) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-xl text-xs"
+                    >
+                      <span className="text-white/80 truncate">{item.itemName}</span>
+                      <span className="font-mono font-bold text-emerald-400 ml-2 shrink-0">
+                        x{item.amount}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {log.clinicName && (
+                  <div className="mt-2 text-[10px] text-white/25 flex items-center gap-1">
+                    <span className="text-white/40">Clinic:</span> {log.clinicName}
+                    {log.clinicLocation && <span className="text-white/20"> · {log.clinicLocation}</span>}
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
+

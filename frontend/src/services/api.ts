@@ -787,9 +787,57 @@ export async function acceptStockRequest(businessId: string, requestId: string) 
       supplierId: currentUser.uid,
       supplierName: currentUser.displayName || currentUser.email || 'Supplier'
     }, { merge: true });
+
+    // 3. Push a structured Clinical Usage Log entry
+    // This records dispensation in a dedicated audit trail collection
+    const clinicalUsageLogsRef = collection(db, 'businesses', businessId, 'clinical_usage_logs');
+    await addDoc(clinicalUsageLogsRef, {
+      source: 'supplier_fulfillment',
+      requestId: requestId,
+      patientName: data.patientName || 'Unknown',
+      patientEmail: data.patientEmail || null,
+      doctorId: data.doctorId || null,
+      supplierId: currentUser.uid,
+      supplierName: currentUser.displayName || currentUser.email || 'Supplier',
+      prescriptionNotes: data.prescriptionNotes || '',
+      assignedAssistantId: data.assignedAssistantId || null,
+      clinicName: data.clinicName || '',
+      clinicLocation: data.clinicLocation || '',
+      itemsDispensed: actions.map((a: any) => ({
+        itemName: a.itemName,
+        amount: Number(a.amount) || 0,
+        action: a.action || 'Stock Out',
+        duration: a.duration || ''
+      })),
+      fulfilledAt: serverTimestamp(),
+      createdAt: serverTimestamp()
+    });
+    console.log(
+      `%c CLINICAL USAGE LOG: Recorded dispensation for ${data.patientName} (${actions.length} item(s))`,
+      'color: #10b981; font-weight: bold; font-size: 11px;'
+    );
   }
   
   return { status: 'success' };
+}
+
+// Subscribe to clinical usage logs for a given clinic (real-time)
+export function subscribeToClinicalUsageLogs(
+  businessId: string,
+  callback: (logs: any[]) => void
+) {
+  if (!businessId) return () => {};
+  const q = query(
+    collection(db, 'businesses', businessId, 'clinical_usage_logs'),
+    orderBy('createdAt', 'desc'),
+    limit(50)
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  }, (err) => {
+    console.warn('Clinical usage logs subscription error:', err);
+    callback([]);
+  });
 }
 
 export function subscribeToPatientHistory(businessId: string, patientName: string, callback: (logs: any[]) => void) {
