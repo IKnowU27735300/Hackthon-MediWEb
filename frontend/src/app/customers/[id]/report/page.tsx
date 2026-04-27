@@ -20,7 +20,7 @@ import {
 import { Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useParams } from 'next/navigation';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
 import { subscribeToActiveStaff, logStockActions } from '@/services/api';
@@ -287,6 +287,14 @@ export default function PatientReportPage() {
                 >
                   <Share2 size={16} />
                   Assign to Assistant
+                </button>
+                <div className="h-8 w-[1px] bg-white/10 mx-2"></div>
+                <button 
+                  onClick={handleDownload}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold transition-all bg-white/5 text-white/60 hover:bg-white/10 border border-white/10 text-sm"
+                >
+                  <Download size={16} />
+                  Download PDF
                 </button>
                 <div className="h-8 w-[1px] bg-white/10 mx-2"></div>
                 <button 

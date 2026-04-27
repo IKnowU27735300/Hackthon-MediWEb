@@ -14,6 +14,7 @@ interface AuthContextType {
   isProfileComplete: boolean;
   displayName: string | null;
   location: string | null;
+  clinicName: string | null;
   loading: boolean;
 }
 
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType>({
   isProfileComplete: true, 
   displayName: null,
   location: null,
+  clinicName: null,
   loading: true 
 });
 
@@ -34,6 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isProfileComplete, setIsProfileComplete] = useState(true);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [location, setLocation] = useState<string | null>(null);
+  const [clinicName, setClinicName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,6 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setBusinessId(null);
         setDisplayName(null);
         setLocation(null);
+        setClinicName(null);
         setLoading(false);
       }
     });
@@ -82,6 +86,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             
             if ((userRole === 'assistant' || userRole === 'supplier') && data.businessId) {
               userBusinessId = data.businessId;
+              // Fetch clinic name
+              try {
+                const clinicDoc = await getDoc(doc(db, 'businesses', userBusinessId));
+                if (clinicDoc.exists()) {
+                  profileLocation = clinicDoc.data().location || profileLocation;
+                  setClinicName(clinicDoc.data().displayName || clinicDoc.data().clinicName || 'Clinic');
+                }
+              } catch (e) {
+                console.warn("Failed to fetch clinic info", e);
+              }
+            } else if (userRole === 'doctor') {
+              setClinicName(data.clinicName || data.displayName || 'My Clinic');
             }
           }
           
@@ -149,7 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.uid]); // Use uid as stable dependency
 
   return (
-    <AuthContext.Provider value={{ user, role, businessId, isProfileComplete, displayName, location, loading }}>
+    <AuthContext.Provider value={{ user, role, businessId, isProfileComplete, displayName, location, clinicName, loading }}>
         {children}
     </AuthContext.Provider>
   );

@@ -20,7 +20,7 @@ import { useAuth } from '@/context/AuthContext';
 import { AnimatePresence } from 'framer-motion';
 
 export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: () => void }) {
-  const { businessId, user } = useAuth();
+  const { businessId, user, displayName, clinicName } = useAuth();
   const displayStats = stats || {
     inventory_alerts: [],
     all_inventory: [],
@@ -103,8 +103,11 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
       </AnimatePresence>
       <header className="flex justify-between items-center mb-10">
         <div>
-          <h1 className="text-3xl font-bold mb-2 text-amber-500">Inventory Command</h1>
-          <p className="text-white/50">Logistics and resource management.</p>
+          <h1 className="text-3xl font-bold mb-1 text-amber-500">
+            {displayName || user?.email?.split('@')[0] || 'Supplier'}
+          </h1>
+          <p className="text-xs text-white/30 uppercase tracking-widest font-bold">Supply Chain · Logistics Hub</p>
+          <p className="text-white/50 mt-1">Resource management and clinical fulfillment.</p>
         </div>
         <button 
           onClick={onAction}
@@ -242,50 +245,65 @@ export function SupplierDashboard({ stats, onAction }: { stats: any, onAction: (
           </div>
         </div>
 
-        <div className="glass-card p-6 border-amber-500/20 bg-amber-500/5">
-          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-            <History size={18} className="text-amber-500" />
-            Recent Logs
-          </h3>
-          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-            {(displayStats as any).all_history?.length > 0 ? (
-              (displayStats as any).all_history
-                .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-                .slice(0, 8)
-                .map((log: any) => (
-                  <div key={log.id} className="flex gap-3 text-sm group">
-                    <div className="w-1 h-auto bg-amber-500/20 rounded-full group-hover:bg-amber-500/50 transition-all" />
-                    <div className="flex-1 pb-3 border-b border-white/5">
-                      <p className="text-white/60 text-xs">
-                        <span className="text-amber-400 font-bold">{log.patientName || 'System'}</span> Used:
-                      </p>
-                      <div className="mt-1 space-y-1">
-                        {log.items?.map((item: any, i: number) => (
-                          <div key={i} className="flex justify-between items-center bg-black/20 p-2 rounded-lg">
-                            <span className="text-white font-medium text-[11px]">{item.itemName}</span>
-                            <span className={`font-bold text-[10px] ${item.action === 'Stock In' ? 'text-emerald-400' : 'text-pink-400'}`}>
-                              {item.action === 'Stock In' ? '+' : '-'}{item.amount}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      <p className="text-[9px] text-white/20 mt-2 lowercase tracking-tighter">
-                        {log.createdAt?.seconds ? new Date(log.createdAt.seconds * 1000).toLocaleString() : 'Recent Session'}
-                      </p>
-                    </div>
-                  </div>
-                ))
-            ) : (
-              <div className="py-10 text-center text-white/20 italic text-xs">
-                No inventory logs recorded yet.
+        <div className="space-y-6">
+          <div className="glass-card p-6 border-amber-500/20 bg-amber-500/5">
+            <h3 className="text-lg font-bold mb-4">Supply Chain Context</h3>
+            <p className="text-sm text-white/60 mb-6">Linked to: <span className="text-amber-400 font-bold">{clinicName || 'Clinic'}</span></p>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-white/40 uppercase tracking-widest font-bold">Logistics Status</span>
+                <span className="text-amber-400 font-bold">READY</span>
               </div>
-            )}
+              <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: '100%' }}
+                  className="h-full bg-amber-500" 
+                />
+              </div>
+            </div>
           </div>
-          <button className="w-full mt-6 py-3 border border-white/10 rounded-xl text-xs font-bold hover:bg-white/5 transition-all flex items-center justify-center gap-2">
-            Full Audit History <ArrowUpRight size={14} />
-          </button>
+
+          <div className="glass-card p-6 border-amber-500/20 bg-amber-500/5">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <History size={18} className="text-amber-500" />
+              Recent Logs
+            </h3>
+            <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+              {(displayStats as any).all_history?.length > 0 ? (
+                (displayStats as any).all_history
+                  .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+                  .slice(0, 5)
+                  .map((log: any) => (
+                    <div key={log.id} className="flex gap-3 text-sm group">
+                      <div className="w-1 h-auto bg-amber-500/20 rounded-full group-hover:bg-amber-500/50 transition-all" />
+                      <div className="flex-1 pb-3 border-b border-white/5">
+                        <p className="text-white/60 text-[10px]">
+                          <span className="text-amber-400 font-bold">{log.patientName || 'System'}</span> Used:
+                        </p>
+                        <div className="mt-1 space-y-1">
+                          {log.items?.map((item: any, i: number) => (
+                            <div key={i} className="flex justify-between items-center bg-black/20 p-1.5 rounded-lg">
+                              <span className="text-white font-medium text-[10px]">{item.itemName}</span>
+                              <span className={`font-bold text-[9px] ${item.action === 'Stock In' ? 'text-emerald-400' : 'text-pink-400'}`}>
+                                {item.action === 'Stock In' ? '+' : '-'}{item.amount}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+              ) : (
+                <div className="py-6 text-center text-white/20 italic text-[10px]">
+                  No recent inventory logs.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
+
     </div>
   );
 }

@@ -93,16 +93,13 @@ export function subscribeToDashboardSummary(businessId: string, callback: (data:
     emit();
   }, (err) => handleError('inventory', err));
 
-  // 2. BOOKINGS & CONTACTS & HISTORY (Restricted for Suppliers who are not owners)
+  // 2. BOOKINGS & CONTACTS (Restricted for Suppliers who are not owners)
   // Check if user is allowed to view clinical data
-  // Suppliers generally only manage stock, unless they are the business owner.
   const isClinicalStaff = role === 'doctor' || role === 'assistant' || userId === businessId;
 
   if (isClinicalStaff && role !== 'supplier') {
-    // Apply RBAC filters for real-time snapshots
     const bookingsQuery = bookingsRef;
     const contactsQuery = contactsRef;
-    const historyQuery = query(historyRef, orderBy('createdAt', 'desc'), limit(50));
 
     unsubBookings = onSnapshot(bookingsQuery, (snap) => {
       state.bookings = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
@@ -113,31 +110,40 @@ export function subscribeToDashboardSummary(businessId: string, callback: (data:
       state.contacts = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
       emit();
     }, (err) => handleError('contacts', err));
+  }
 
+  // 3. HISTORY / REQUESTS (Clinical staff see their clinic; Suppliers see assigned/pending)
+  if (role === 'supplier') {
+    // Suppliers see prescriptions across all clinics
+    // We use collectionGroup but simplify the query to avoid complex index requirements
+    const historyQuery = query(
+      collectionGroup(db, 'stock_history'),
+      where('status', '==', 'pending'),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+    
+    unsubHistory = onSnapshot(historyQuery, (snap) => {
+      state.history = snap.docs.map(doc => ({ 
+        id: doc.id, 
+        businessId: doc.ref.parent.parent?.id, 
+        ...doc.data() 
+      })).filter((doc: any) => 
+        // Filter in-memory for security/relevance if needed, 
+        // but here we show all pending requests in the network
+        !doc.supplierId || doc.supplierId === userId
+      ) as any;
+      emit();
+    }, (err) => {
+      handleError('history_group', err);
+    });
+  } else if (isClinicalStaff) {
+    // Clinical staff see history for their specific clinic
+    const historyQuery = query(historyRef, orderBy('createdAt', 'desc'), limit(50));
     unsubHistory = onSnapshot(historyQuery, (snap) => {
       state.history = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any;
       emit();
     }, (err) => handleError('history', err));
-  } else if (role === 'supplier' && userId) {
-     // Suppliers need to see prescriptions across all clinics where they are assigned
-     const historyQuery = query(
-       collectionGroup(db, 'stock_history'),
-       or(
-         where('supplierId', '==', userId),
-         and(where('status', '==', 'pending'), where('supplierId', '==', null))
-       ),
-       orderBy('createdAt', 'desc'),
-       limit(30)
-     );
-     
-     unsubHistory = onSnapshot(historyQuery, (snap) => {
-       state.history = snap.docs.map(doc => ({ 
-         id: doc.id, 
-         businessId: doc.ref.parent.parent?.id, // Extract clinic ID from path
-         ...doc.data() 
-       })) as any;
-       emit();
-     }, (err) => handleError('history_group', err));
   }
 
   return () => {
@@ -630,7 +636,7 @@ export async function logStockActions(businessId: string, data: any) {
       }
     }
 
-    const isRequest = !!supplierId || actions.some((a: any) => a.action === 'Stock In');
+    const isRequest = !!supplierId || !!finalAssistantId || actions.some((a: any) => a.action === 'Stock In');
 
     for (const action of actions) {
       if (!action.itemName) continue;
@@ -673,6 +679,11 @@ export async function logStockActions(businessId: string, data: any) {
 
     // 2. Save a permanent record of this "order" session
     const historyRef = collection(db, 'businesses', businessId, 'stock_history');
+    
+    // Fetch clinic info to enrich the history record
+    const clinicDoc = await getDoc(doc(db, 'businesses', businessId));
+    const clinicData = clinicDoc.exists() ? clinicDoc.data() : {};
+
     await addDoc(historyRef, {
       patientName,
       patientEmail: patientEmail || null,
@@ -680,6 +691,8 @@ export async function logStockActions(businessId: string, data: any) {
       sharedWithAssistant: sharedWithAssistant,
       supplierId: supplierId || null,
       doctorId: doctorId || null,
+      clinicName: clinicData.clinicName || clinicData.displayName || 'Clinic',
+      clinicLocation: clinicData.location || '',
       status: isRequest ? 'pending' : 'accepted',
       items: actions,
       prescriptionNotes: prescriptionNotes || '',

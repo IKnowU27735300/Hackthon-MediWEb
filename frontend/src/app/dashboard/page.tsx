@@ -886,12 +886,20 @@ export default function Dashboard() {
                       {patientHistory.map((log: any) => (
                          <div key={log.id} className="relative pl-4 border-l border-white/10">
                             <div className="absolute top-0 -left-[5px] w-2.5 h-2.5 rounded-full bg-primary-900 border border-primary-500"></div>
-                            <div className="text-xs text-white/40 mb-1">{new Date(log.createdAt?.seconds * 1000).toLocaleDateString()}</div>
+                            <div className="text-xs text-white/40 mb-1 flex justify-between items-start">
+                              <span>{new Date(log.createdAt?.seconds * 1000).toLocaleDateString()}</span>
+                              {log.status === 'pending' && <span className="text-[10px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded uppercase font-bold tracking-tighter">Pending</span>}
+                            </div>
                             {log.items?.map((i: any, idx: number) => (
                               <div key={idx} className="text-xs font-bold text-white/80">
                                 {i.amount}x {i.itemName}
                               </div>
                             ))}
+                            {log.prescriptionNotes && (
+                              <div className="text-[11px] text-emerald-400/70 mt-1 italic leading-relaxed bg-emerald-400/5 p-2 rounded-lg border border-emerald-400/10">
+                                "{log.prescriptionNotes}"
+                              </div>
+                            )}
                          </div>
                       ))}
                       {patientHistory.length === 0 && (

@@ -3,20 +3,26 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Mail, 
+  Heart,
+  Building,
   Lock, 
-  User,
   ArrowRight, 
   ArrowLeft,
-  AlertCircle,
-  Loader2,
+  ShieldCheck,
+  Package,
+  User,
   Stethoscope,
+  MapPin,
+  Mail,
+  Loader2,
+  CheckCircle,
+  Clock,
   Users,
   Truck,
   FileBadge,
-  MapPin,
   Building2,
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { 
   createUserWithEmailAndPassword, 
@@ -40,6 +46,7 @@ type UserRole = 'doctor' | 'assistant' | 'supplier';
 export default function SignupPage() {
   const [role, setRole] = useState<UserRole>('doctor');
   const [name, setName] = useState('');
+  const [clinicName, setClinicName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
@@ -51,6 +58,17 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+
+  const LOCATIONS = [
+    "Mumbai, Maharashtra",
+    "Delhi, NCR",
+    "Bangalore, Karnataka",
+    "Hyderabad, Telangana",
+    "Chennai, Tamil Nadu",
+    "Kolkata, West Bengal",
+    "Pune, Maharashtra",
+    "Ahmedabad, Gujarat"
+  ];
 
   // Fetch clinics based on location
   useEffect(() => {
@@ -94,63 +112,58 @@ export default function SignupPage() {
       return;
     }
 
-    if (role === 'doctor' && !licenseNumber) {
-      setError('Medical license number is required for doctors');
-      setLoading(false);
-      return;
-    }
-
     try {
+      // Validation
+      if ((role === 'assistant' || role === 'supplier') && !selectedClinic) {
+        throw new Error("Please select a clinic to join.");
+      }
+
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Update auth profile
-      await updateProfile(user, { displayName: name });
+      // Update Firebase Profile
+      const displayName = role === 'doctor' ? clinicName : name;
+      await updateProfile(user, { displayName });
 
-      // Create Business/Staff Profile
       const profileData: any = {
-        displayName: name,
+        displayName: displayName,
+        fullName: name,
         email: email,
         role: role,
+        location: location,
         createdAt: serverTimestamp(),
-        profileCompleted: role === 'doctor' ? false : true, // Assistants/Suppliers are done after signup
+        profileCompleted: true, 
       };
 
       if (role === 'doctor') {
+        profileData.doctorName = name;
         profileData.licenseNumber = licenseNumber;
-        profileData.doctorName = name; // Specifically store as doctorName
-        profileData.location = location; // Doctors also have location (clinic location)
+        profileData.clinicName = clinicName;
       } else {
-        profileData.location = location;
         profileData.businessId = selectedClinic.id;
-        profileData.clinicName = selectedClinic.displayName || selectedClinic.businessName || selectedClinic.doctorName;
+        profileData.clinicName = selectedClinic.clinicName || selectedClinic.displayName;
       }
 
-      await setDoc(doc(db, 'businesses', user.uid), profileData);
-
-      // Redirect logic
-      if (role === 'doctor') {
-        router.push('/onboarding');
-      } else {
-        router.push('/dashboard');
-      }
+      await setDoc(doc(db, "businesses", user.uid), profileData);
+      
+      router.push('/dashboard');
     } catch (err: any) {
-      if (err.code === 'auth/email-already-in-use') {
-        setError('Email is already in use');
-      } else {
-        setError(err.message || 'Failed to create account.');
-      }
+      setError(err.message || "Failed to create account");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-theme">
+    <div className="min-h-screen bg-[#030712] text-white flex items-center justify-center p-6 relative overflow-hidden">
+      {/* Background blobs */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary-600/10 blur-[120px] rounded-full" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-600/10 blur-[120px] rounded-full" />
+
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-xl w-full relative"
+        className="w-full max-w-md relative"
       >
         <Link 
           href="/" 
@@ -162,7 +175,7 @@ export default function SignupPage() {
 
         <div className="text-center mb-10">
           <div className="w-16 h-16 bg-primary-600 rounded-2xl mx-auto mb-6 flex items-center justify-center font-bold text-2xl shadow-lg shadow-primary-900/40 text-white">
-            M
+            <Heart />
           </div>
           <h1 className="text-4xl font-bold tracking-tight mb-2 text-theme">Create Account</h1>
           <p className="text-muted">Select your role and join the MediWeb ecosystem</p>
@@ -209,9 +222,11 @@ export default function SignupPage() {
           <form onSubmit={handleSignup} className="space-y-5">
             <div className="grid md:grid-cols-2 gap-5">
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-widest text-white/40 ml-1">Full Name</label>
+                <label className="text-xs font-bold uppercase tracking-widest text-white/40 ml-1">
+                  {role === 'doctor' ? "Doctor's Name" : "Full Name"}
+                </label>
                 <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18} />
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-primary-500/30" size={18} />
                   <input 
                     type="text" 
                     required
@@ -225,37 +240,62 @@ export default function SignupPage() {
 
               <div className="space-y-2">
                 <label className="text-xs font-bold uppercase tracking-widest text-white/40 ml-1">
-                  {role === 'doctor' ? 'Clinic Location' : 'Your Location'}
+                  {role === 'doctor' ? 'Clinic City/Location' : 'Your City/Location'}
                 </label>
                 <div className="relative">
                   <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18} />
-                  <input 
-                    type="text" 
+                  <select 
                     required
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    placeholder="City, Region" 
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-primary-500 focus:bg-white/10 transition-all text-theme appearance-none"
+                  >
+                    <option value="" disabled className="bg-gray-900">Select Location</option>
+                    {LOCATIONS.map(loc => (
+                      <option key={loc} value={loc} className="bg-gray-900">{loc}</option>
+                    ))}
+                    <option value="Other" className="bg-gray-900">Other / Remote</option>
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-white/30">
+                    <ArrowRight size={16} className="rotate-90" />
+                  </div>
+                </div>
+              </div>
+                {/* Clinic Name (Doctor only) */}
+            {role === 'doctor' && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-white/40 ml-1">Clinic Name</label>
+                <div className="relative">
+                  <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-primary-500/30" size={18} />
+                  <input 
+                    type="text" 
+                    required
+                    value={clinicName}
+                    onChange={(e) => setClinicName(e.target.value)}
+                    placeholder="City Care Clinic" 
                     className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-primary-500 focus:bg-white/10 transition-all text-theme" 
                   />
                 </div>
               </div>
+            )}
 
-              {role === 'doctor' && (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-widest text-white/40 ml-1">License Number</label>
-                  <div className="relative">
-                    <FileBadge className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18} />
-                    <input 
-                      type="text" 
-                      required
-                      value={licenseNumber}
-                      onChange={(e) => setLicenseNumber(e.target.value)}
-                      placeholder="MC-123456" 
-                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-primary-500 focus:bg-white/10 transition-all text-theme" 
-                    />
-                  </div>
+            {/* License Number (Doctor only) */}
+            {role === 'doctor' && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-white/40 ml-1">License Number</label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-primary-500/30" size={18} />
+                  <input 
+                    type="text" 
+                    required
+                    value={licenseNumber}
+                    onChange={(e) => setLicenseNumber(e.target.value)}
+                    placeholder="REG-12345" 
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-primary-500 focus:bg-white/10 transition-all text-theme" 
+                  />
                 </div>
-              )}
+              </div>
+            )}
             </div>
 
             {role !== 'doctor' && (

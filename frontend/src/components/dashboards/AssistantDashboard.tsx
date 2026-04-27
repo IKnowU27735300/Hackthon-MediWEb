@@ -8,14 +8,20 @@ import {
   Clock,
   ShieldCheck,
   Search,
-  Package
+  Package,
+  ShoppingBag,
+  FileText,
+  X,
+  Activity
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { StatCard } from '../StatCard';
 import { ScheduleItem } from '../ScheduleItem';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 
-export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
+export function AssistantDashboard({ stats }: { stats: any, user: any }) {
+  const { user, displayName, clinicName } = useAuth();
   const displayStats = stats || {
     bookings: { today: 0, upcoming: 0, completed: 0, no_show: 0 },
     leads: { total: 0, new: 0 },
@@ -24,23 +30,79 @@ export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
     all_history: []
   };
 
-  const assignedCases = displayStats.all_bookings?.filter((b: any) => 
-    (b.assignedAssistantId === user?.uid || b.sharedWithAssistant === true) &&
-    (b.status === 'pending_review' || b.status === 'pending' || b.status === 'upcoming')
-  ) || [];
+  const assignedCases = [
+    ...(displayStats.all_bookings?.filter((b: any) => 
+      // Show if assigned to me OR if it's unassigned but pending review/upcoming in my clinic
+      (b.assignedAssistantId === user?.uid || !b.assignedAssistantId || b.sharedWithAssistant === true) &&
+      (b.status === 'pending_review' || b.status === 'pending' || b.status === 'upcoming')
+    ) || []),
+    ...(displayStats.all_history?.filter((log: any) => 
+      (log.assignedAssistantId === user?.uid || !log.assignedAssistantId) && log.status === 'pending'
+    ).map((log: any) => ({
+      ...log,
+      customerName: log.patientName,
+      service: 'Stock/Prescription Review',
+      isHistoryTask: true
+    })) || [])
+  ];
 
   const recentSupplierResponses = (displayStats.all_history || []).filter((log: any) => 
-    log.status === 'pending' || log.status === 'completed' || log.status === 'accepted' || log.status === 'rejected' || log.status === 'dispatched'
+    (log.assignedAssistantId === user?.uid || !log.assignedAssistantId) &&
+    (log.status === 'pending' || log.status === 'completed' || log.status === 'accepted' || log.status === 'rejected' || log.status === 'dispatched')
   );
 
+  const [selectedCase, setSelectedCase] = React.useState<any>(null);
+  const [showCaseModal, setShowCaseModal] = React.useState(false);
+
+  const handleProcessCase = (booking: any) => {
+    setSelectedCase(booking);
+    setShowCaseModal(true);
+  };
+
   const router = useRouter();
+  const [showPopup, setShowPopup] = React.useState(false);
+  const [latestCase, setLatestCase] = React.useState<any>(null);
+  const prevCasesLength = React.useRef(assignedCases.length);
+
+  React.useEffect(() => {
+    if (assignedCases.length > prevCasesLength.current) {
+      const newest = assignedCases[0];
+      setLatestCase(newest);
+      setShowPopup(true);
+      const t = setTimeout(() => setShowPopup(false), 5000);
+      return () => clearTimeout(t);
+    }
+    prevCasesLength.current = assignedCases.length;
+  }, [assignedCases.length]);
 
   return (
     <div className="space-y-8">
+      <AnimatePresence>
+        {showPopup && latestCase && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: -20, x: '-50%' }}
+            className="fixed top-10 left-1/2 z-[100] bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-emerald-400/30"
+          >
+            <div className="bg-white/20 p-2 rounded-full">
+              <Activity size={24} />
+            </div>
+            <div>
+              <h4 className="font-bold">New Clinical Assignment</h4>
+              <p className="text-sm opacity-80">Doctor assigned a new case review for {latestCase.customerName}</p>
+            </div>
+            <button onClick={() => setShowPopup(false)} className="ml-4 opacity-50 hover:opacity-100">
+              <X size={20} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <header className="flex justify-between items-center mb-10">
         <div>
           <h1 className="text-3xl font-bold mb-1 text-emerald-400">
-            {user?.displayName || user?.email?.split('@')[0] || 'Assistant'} 
+            {displayName || user?.email?.split('@')[0] || 'Assistant'} 
           </h1>
           <p className="text-xs text-white/30 uppercase tracking-widest font-bold">Assistant Hub · Clinical Support</p>
           <p className="text-white/50 mt-1">Clinical support and medical record reviews.</p>
@@ -89,10 +151,10 @@ export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
                       </div>
                     </div>
                     <button 
-                      onClick={() => router.push('/forms')}
+                      onClick={() => handleProcessCase(booking)}
                       className="flex items-center gap-2 text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition-transform"
                     >
-                      Process <ArrowRight size={14} />
+                      Review Case <ArrowRight size={14} />
                     </button>
                   </div>
                 ))
@@ -152,12 +214,12 @@ export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
 
         <div className="space-y-6">
           <div className="glass-card p-6 border-emerald-500/20 bg-emerald-500/5">
-            <h3 className="text-lg font-bold mb-4">Clinical Scribe Status</h3>
-            <p className="text-sm text-white/60 mb-6">{user?.displayName || 'Your'} profile is active in the clinical network.</p>
+            <h3 className="text-lg font-bold mb-4">Clinical Assistant Role</h3>
+            <p className="text-sm text-white/60 mb-6">Linked to: <span className="text-emerald-400 font-bold">{clinicName || 'Clinic'}</span></p>
             <div className="space-y-4">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-white/40 uppercase tracking-widest font-bold">Visibility</span>
-                <span className="text-emerald-400 font-bold">ONLINE</span>
+                <span className="text-white/40 uppercase tracking-widest font-bold">Network Status</span>
+                <span className="text-emerald-400 font-bold">ACTIVE</span>
               </div>
               <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                 <motion.div 
@@ -172,16 +234,102 @@ export function AssistantDashboard({ stats, user }: { stats: any, user: any }) {
           <div className="glass-card p-6 border-white/10">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <Search size={18} className="text-white/40" />
-              Quick lookup
+              Patient Archive
             </h3>
             <input 
               type="text" 
-              placeholder="Search patient record..." 
+              placeholder="Search by name or email..." 
               className="glass-input text-sm"
             />
           </div>
         </div>
       </div>
+
+      {/* Case Review Modal */}
+      <AnimatePresence>
+        {showCaseModal && selectedCase && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="w-full max-w-2xl glass-card relative overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-emerald-500/5">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center font-bold text-xl">
+                    {selectedCase.customerName?.charAt(0) || 'P'}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">{selectedCase.customerName}</h2>
+                    <p className="text-xs text-white/40">{selectedCase.service}</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowCaseModal(false)} className="p-2 text-white/40 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                    <div className="text-[10px] text-white/30 uppercase font-bold mb-1">Email Address</div>
+                    <div className="text-sm font-medium">{selectedCase.email || selectedCase.customerEmail || 'Not provided'}</div>
+                  </div>
+                  <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                    <div className="text-[10px] text-white/30 uppercase font-bold mb-1">Phone Number</div>
+                    <div className="text-sm font-medium">{selectedCase.phone || 'Not provided'}</div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-emerald-400 flex items-center gap-2">
+                    <FileText size={14} /> Clinical Instructions
+                  </h4>
+                  <div className="p-5 bg-black/40 rounded-2xl border border-emerald-500/10 italic text-sm text-white/70 leading-relaxed">
+                    {selectedCase.notes || selectedCase.clinicalNotes || "No specific instructions provided by the doctor for this case review."}
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-4">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-white/40">Quick Actions</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button className="py-3 bg-white/5 hover:bg-white/10 rounded-xl font-bold text-xs transition-all border border-white/5">
+                      View Full History
+                    </button>
+                    <button className="py-3 bg-white/5 hover:bg-white/10 rounded-xl font-bold text-xs transition-all border border-white/5">
+                      Upload Results
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-white/10 bg-black/20 flex justify-end gap-3">
+                <button 
+                  onClick={() => setShowCaseModal(false)}
+                  className="px-6 py-2.5 text-xs font-bold text-white/40 hover:text-white transition-colors"
+                >
+                  Close
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowCaseModal(false);
+                    // Add any specific processing logic here
+                  }}
+                  className="px-8 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-900/20 transition-all"
+                >
+                  Mark as Reviewed
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
