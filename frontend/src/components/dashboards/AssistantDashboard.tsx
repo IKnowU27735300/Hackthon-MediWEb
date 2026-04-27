@@ -1,13 +1,14 @@
 "use client";
 
 import React from 'react';
+import { updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { 
   Users, 
   ClipboardCheck, 
   ArrowRight,
   Clock,
   ShieldCheck,
-  Search,
   Package,
   ShoppingBag,
   FileText,
@@ -21,7 +22,14 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
 export function AssistantDashboard({ stats }: { stats: any, user: any }) {
-  const { user, displayName, clinicName } = useAuth();
+  const { user, businessId, displayName, clinicName } = useAuth();
+
+  // --- State must be declared before any derived values that reference it ---
+  const [selectedCase, setSelectedCase] = React.useState<any>(null);
+  const [showCaseModal, setShowCaseModal] = React.useState(false);
+  const [isReviewing, setIsReviewing] = React.useState(false);
+  const [reviewedIds, setReviewedIds] = React.useState<Set<string>>(new Set());
+
   const displayStats = stats || {
     bookings: { today: 0, upcoming: 0, completed: 0, no_show: 0 },
     leads: { total: 0, new: 0 },
@@ -30,14 +38,19 @@ export function AssistantDashboard({ stats }: { stats: any, user: any }) {
     all_history: []
   };
 
+  // Show bookings that are explicitly assigned to this assistant, OR any pending_review
+  // booking in the clinic that hasn't been assigned yet (so nothing falls through the cracks).
   const assignedCases = [
-    ...(displayStats.all_bookings?.filter((b: any) => 
-      // Show if assigned to me OR if it's unassigned but pending review/upcoming in my clinic
-      (b.assignedAssistantId === user?.uid || !b.assignedAssistantId || b.sharedWithAssistant === true) &&
-      (b.status === 'pending_review' || b.status === 'pending' || b.status === 'upcoming')
-    ) || []),
+    ...(displayStats.all_bookings?.filter((b: any) => {
+      const isForMe = b.assignedAssistantId === user?.uid || b.sharedWithAssistant === true;
+      const isPendingClinic = !b.assignedAssistantId && b.status === 'pending_review';
+      const isActionable = b.status === 'pending_review' || b.status === 'pending' || b.status === 'upcoming';
+      return (isForMe || isPendingClinic) && isActionable && !reviewedIds.has(b.id);
+    }) || []),
     ...(displayStats.all_history?.filter((log: any) => 
-      (log.assignedAssistantId === user?.uid || !log.assignedAssistantId) && log.status === 'pending'
+      (log.assignedAssistantId === user?.uid || (!log.assignedAssistantId && log.status === 'pending')) &&
+      log.status === 'pending' &&
+      !reviewedIds.has(log.id)
     ).map((log: any) => ({
       ...log,
       customerName: log.patientName,
@@ -51,12 +64,40 @@ export function AssistantDashboard({ stats }: { stats: any, user: any }) {
     (log.status === 'pending' || log.status === 'completed' || log.status === 'accepted' || log.status === 'rejected' || log.status === 'dispatched')
   );
 
-  const [selectedCase, setSelectedCase] = React.useState<any>(null);
-  const [showCaseModal, setShowCaseModal] = React.useState(false);
-
   const handleProcessCase = (booking: any) => {
     setSelectedCase(booking);
     setShowCaseModal(true);
+  };
+
+  const handleMarkReviewed = async () => {
+    if (!selectedCase || !businessId) return;
+    setIsReviewing(true);
+    try {
+      const caseId = selectedCase.id;
+      if (selectedCase.isHistoryTask) {
+        // Update stock_history record
+        await updateDoc(doc(db, 'businesses', businessId, 'stock_history', caseId), {
+          status: 'completed',
+          reviewedAt: serverTimestamp(),
+          reviewedBy: user?.uid
+        });
+      } else {
+        // Update bookings record
+        await updateDoc(doc(db, 'businesses', businessId, 'bookings', caseId), {
+          status: 'completed',
+          reviewedAt: serverTimestamp(),
+          reviewedBy: user?.uid
+        });
+      }
+      // Mark as reviewed locally so it disappears from the queue immediately
+      setReviewedIds(prev => new Set(Array.from(prev).concat(caseId)));
+      setShowCaseModal(false);
+    } catch (err) {
+      console.error('Failed to mark as reviewed:', err);
+      alert('Failed to update case status. Please try again.');
+    } finally {
+      setIsReviewing(false);
+    }
   };
 
   const router = useRouter();
@@ -231,17 +272,7 @@ export function AssistantDashboard({ stats }: { stats: any, user: any }) {
             </div>
           </div>
 
-          <div className="glass-card p-6 border-white/10">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Search size={18} className="text-white/40" />
-              Patient Archive
-            </h3>
-            <input 
-              type="text" 
-              placeholder="Search by name or email..." 
-              className="glass-input text-sm"
-            />
-          </div>
+
         </div>
       </div>
 
@@ -317,13 +348,15 @@ export function AssistantDashboard({ stats }: { stats: any, user: any }) {
                   Close
                 </button>
                 <button 
-                  onClick={() => {
-                    setShowCaseModal(false);
-                    // Add any specific processing logic here
-                  }}
-                  className="px-8 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-900/20 transition-all"
+                  onClick={handleMarkReviewed}
+                  disabled={isReviewing}
+                  className="px-8 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-900/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Mark as Reviewed
+                  {isReviewing ? (
+                    <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving...</>
+                  ) : (
+                    'Mark as Reviewed'
+                  )}
                 </button>
               </div>
             </motion.div>
