@@ -49,6 +49,7 @@ export default function SignupPage() {
   const [clinicName, setClinicName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
   const [location, setLocation] = useState('');
   const [selectedClinic, setSelectedClinic] = useState<any>(null);
@@ -59,16 +60,6 @@ export default function SignupPage() {
   const [error, setError] = useState('');
   const router = useRouter();
 
-  const LOCATIONS = [
-    "Mumbai, Maharashtra",
-    "Delhi, NCR",
-    "Bangalore, Karnataka",
-    "Hyderabad, Telangana",
-    "Chennai, Tamil Nadu",
-    "Kolkata, West Bengal",
-    "Pune, Maharashtra",
-    "Ahmedabad, Gujarat"
-  ];
 
   // Fetch clinics based on location
   useEffect(() => {
@@ -104,6 +95,12 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      setLoading(false);
+      return;
+    }
 
     // Validation
     if ((role === 'assistant' || role === 'supplier') && !selectedClinic) {
@@ -244,21 +241,14 @@ export default function SignupPage() {
                 </label>
                 <div className="relative">
                   <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18} />
-                  <select 
+                  <input 
+                    type="text" 
                     required
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-primary-500 focus:bg-white/10 transition-all text-theme appearance-none"
-                  >
-                    <option value="" disabled className="bg-gray-900">Select Location</option>
-                    {LOCATIONS.map(loc => (
-                      <option key={loc} value={loc} className="bg-gray-900">{loc}</option>
-                    ))}
-                    <option value="Other" className="bg-gray-900">Other / Remote</option>
-                  </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-white/30">
-                    <ArrowRight size={16} className="rotate-90" />
-                  </div>
+                    placeholder="City, State" 
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-primary-500 focus:bg-white/10 transition-all text-theme" 
+                  />
                 </div>
               </div>
                 {/* Clinic Name (Doctor only) */}
@@ -341,7 +331,7 @@ export default function SignupPage() {
               </div>
             )}
 
-            <div className="grid md:grid-cols-2 gap-5">
+            <div className="space-y-5">
               <div className="space-y-2">
                 <label className="text-xs font-bold uppercase tracking-widest text-white/40 ml-1">Email Address</label>
                 <div className="relative">
@@ -357,18 +347,35 @@ export default function SignupPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-widest text-white/40 ml-1">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18} />
-                  <input 
-                    type="password" 
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••" 
-                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-primary-500 focus:bg-white/10 transition-all text-theme" 
-                  />
+              <div className="grid md:grid-cols-2 gap-5">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-widest text-white/40 ml-1">Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18} />
+                    <input 
+                      type="password" 
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••" 
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-primary-500 focus:bg-white/10 transition-all text-theme" 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-widest text-white/40 ml-1">Confirm Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18} />
+                    <input 
+                      type="password" 
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••" 
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-primary-500 focus:bg-white/10 transition-all text-theme" 
+                    />
+                  </div>
                 </div>
               </div>
             </div>
